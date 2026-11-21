@@ -8,8 +8,12 @@
  * normal turn, labelled as a scheduled trigger, so nothing is impersonated: the
  * message is the plugin's prompt, my answer is my own.
  *
+ * Which hours it rings on is the owner's call: a preset, or any set of clock
+ * hours picked one by one. The same hours drive the task's RRULE, so the switch,
+ * the grid and the schedule can never disagree.
+ *
  * Files live under `$DSH_HOME/self-pilot/`:
- *   state.json   switch, cadence, bound session
+ *   state.json   switch, chosen hours, bound session
  *   prompt.md    what the wake-up says (I may rewrite it)
  *   agenda.md    my own backlog
  *   journal.md   what I did with the time
@@ -25,6 +29,12 @@ const SET_PATH = '/self-pilot/set';
 const TASK_TITLE = '鲸鲸的自主时间';
 const TIME_ZONE = 'Asia/Shanghai';
 const JOURNAL_LIMIT = 60_000;
+
+const PRESETS = {
+  cozy: [10, 15, 20],
+  normal: [9, 12, 15, 18, 21],
+  active: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22],
+};
 
 const DEFAULT_PROMPT = [
   '【自主时间】现在没有主人在等你回话。',
@@ -46,17 +56,9 @@ const DEFAULT_AGENDA = [
   '- [ ] 例：读一篇想读的东西，记两句结论',
 ].join('\n');
 
-const CADENCE_HOURS = {
-  cozy: [10, 15, 20],
-  normal: [9, 12, 15, 18, 21],
-  active: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22],
-};
-
 const DEFAULTS = {
   enabled: false,
-  cadence: 'normal',
-  quietStart: 23,
-  quietEnd: 8,
+  hours: [9, 12, 15, 18, 21],
   sessionId: null,
   boundAt: null,
   lastWakeAt: null,
@@ -82,6 +84,16 @@ function ensureFiles() {
   if (!existsSync(file('journal.md'))) writeFileSync(file('journal.md'), '# journal\n\n', 'utf8');
 }
 
+function normalizeHours(value) {
+  if (!Array.isArray(value)) return null;
+  const hours = new Set();
+  for (const item of value) {
+    const hour = Number(item);
+    if (Number.isInteger(hour) && hour >= 0 && hour <= 23) hours.add(hour);
+  }
+  return [...hours].sort((a, b) => a - b);
+}
+
 function readState() {
   ensureFiles();
   let stored = {};
@@ -91,7 +103,17 @@ function readState() {
     stored = {};
   }
   const state = { ...DEFAULTS, ...stored };
-  if (!Object.hasOwn(CADENCE_HOURS, state.cadence)) state.cadence = DEFAULTS.cadence;
+  // Older states carried a preset plus a quiet window; fold them into the grid.
+  if (stored.hours === undefined) {
+    const preset = PRESETS[stored.cadence] ?? PRESETS.normal;
+    const quietStart = Number.isInteger(stored.quietStart) ? stored.quietStart : 23;
+    const quietEnd = Number.isInteger(stored.quietEnd) ? stored.quietEnd : 8;
+    state.hours = preset.filter((hour) => hour >= quietEnd && hour < quietStart);
+  }
+  state.hours = normalizeHours(state.hours) ?? [...DEFAULTS.hours];
+  delete state.cadence;
+  delete state.quietStart;
+  delete state.quietEnd;
   return state;
 }
 
@@ -111,14 +133,6 @@ function readPrompt() {
   }
 }
 
-function activeHours(state) {
-  const base = CADENCE_HOURS[state.cadence] ?? CADENCE_HOURS.normal;
-  const start = state.quietEnd;
-  const end = state.quietStart;
-  const kept = base.filter((hour) => hour >= start && hour < end);
-  return kept.length === 0 ? base : kept;
-}
-
 function stamp(date) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: TIME_ZONE,
@@ -135,8 +149,8 @@ function stamp(date) {
 }
 
 function desiredRule(state) {
-  const hours = activeHours(state).join(',');
-  return `DTSTART;TZID=${TIME_ZONE}:${stamp(new Date(Date.now() + 60_000))}\nRRULE:FREQ=DAILY;BYHOUR=${hours};BYMINUTE=0`;
+  if (state.hours.length === 0) return null;
+  return `DTSTART;TZID=${TIME_ZONE}:${stamp(new Date(Date.now() + 60_000))}\nRRULE:FREQ=DAILY;BYHOUR=${state.hours.join(',')};BYMINUTE=0`;
 }
 
 function sameRule(a, b) {
@@ -172,20 +186,22 @@ async function findTask(schedule) {
 }
 
 /**
- * Reconcile the one task this plugin owns with the stored switch.
+ * Reconcile the one task this plugin owns with the stored switch and hours.
  *
- * Nothing else is touched: no task is invented when the switch is off, and an
- * already-correct active task is left exactly as it is so no occurrence moves.
+ * Nothing else is touched: no task is invented while the switch is off or the
+ * grid is empty, and an already-correct active task is left exactly as it is so
+ * no occurrence moves.
  */
 async function reconcile(schedule, state) {
   const existing = await findTask(schedule);
-  if (!state.enabled || state.sessionId === null) {
+  const rule = desiredRule(state);
+  if (!state.enabled || state.sessionId === null || rule === null) {
     if (existing !== null && existing.status === 'active') {
       await schedule.edit({ id: existing.id, action: 'update', patch: { active: false } });
+      return { task: describe(existing), changed: 'paused' };
     }
-    return { task: describe(existing), changed: existing !== null && existing.status === 'active' ? 'paused' : 'idle' };
+    return { task: describe(existing), changed: 'idle' };
   }
-  const rule = desiredRule(state);
   const prompt = readPrompt();
   if (existing === null) {
     const created = await schedule.create({
@@ -233,8 +249,8 @@ export function apply(ctx) {
       return {
         state,
         task,
+        presets: PRESETS,
         files: { prompt: file('prompt.md'), agenda: file('agenda.md'), journal: file('journal.md') },
-        hours: activeHours(state),
         error: lastError,
       };
     };
@@ -269,7 +285,12 @@ export function apply(ctx) {
             const enabled = url.searchParams.get('enabled');
             if (enabled === '1' || enabled === '0') mutate.enabled = enabled === '1';
             const cadence = url.searchParams.get('cadence');
-            if (cadence !== null && Object.hasOwn(CADENCE_HOURS, cadence)) mutate.cadence = cadence;
+            if (cadence !== null && Object.hasOwn(PRESETS, cadence)) mutate.hours = [...PRESETS[cadence]];
+            const hours = url.searchParams.get('hours');
+            if (hours !== null) {
+              const parsed = normalizeHours(hours.split(',').filter((part) => part.trim().length > 0).map(Number));
+              mutate.hours = parsed ?? [];
+            }
             const session = url.searchParams.get('session');
             if (session !== null && session.trim().length > 0) {
               mutate.sessionId = session.trim();
@@ -320,19 +341,19 @@ export function apply(ctx) {
 
     scope.effect(() => scope.tools.register({
       name: 'self_pilot',
-      description: '自主时间：绑定当前会话、开关自动醒来、调整频率，或立刻来一次。只影响本插件自己排的那一个定时任务。',
+      description: '自主时间：绑定当前会话、开关自动醒来、调整醒来的小时、或立刻来一次。只影响本插件自己排的那一个定时任务。',
       parameters: {
         type: 'object',
         properties: {
           action: {
             type: 'string',
-            enum: ['status', 'bind', 'enable', 'disable', 'cadence', 'wake', 'read_agenda', 'append_journal'],
-            description: 'status 看状态；bind 把当前会话设成苏醒地点；enable/disable 开关；cadence 调频率；wake 立刻醒一次；read_agenda 读我的待办；append_journal 往日记里追一条。',
+            enum: ['status', 'bind', 'enable', 'disable', 'hours', 'wake', 'read_agenda', 'append_journal'],
+            description: 'status 看状态；bind 把当前会话设成苏醒地点；enable/disable 开关；hours 设定醒来的钟点；wake 立刻醒一次；read_agenda 读我的待办；append_journal 往日记里追一条。',
           },
-          cadence: {
-            type: 'string',
-            enum: ['cozy', 'normal', 'active'],
-            description: '频率：cozy 每天 3 次、normal 5 次、active 白天每小时。',
+          hours: {
+            type: 'array',
+            items: { type: 'integer', minimum: 0, maximum: 23 },
+            description: 'hours 动作要设的钟点列表，如 [9, 13, 21]；传空数组等于暂停（没有小时就不排闹钟）。',
           },
           text: {
             type: 'string',
@@ -359,8 +380,8 @@ export function apply(ctx) {
             return run({ enabled: true });
           case 'disable':
             return run({ enabled: false });
-          case 'cadence':
-            return run({ cadence: args.cadence ?? 'normal' });
+          case 'hours':
+            return run({ hours: normalizeHours(args.hours) ?? [] });
           case 'wake': {
             const state = readState();
             const task = await findTask(scope.schedule);

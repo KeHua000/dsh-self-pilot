@@ -1,11 +1,11 @@
 /**
  * Client half of dsh-self-pilot.
  *
- * One row in Settings → General: the switch the owner asked for, the cadence,
- * the next wake-up, and a "wake now" button so the loop can be proven without
- * waiting for the clock. Writes go through the plugin's own GET routes — the
- * web server rejects anything but GET/HEAD on resource routes, so the switch
- * simply encodes its state in the query string.
+ * One row in Settings → General: the switch, the presets, and a 24-hour grid so
+ * the owner can pick exactly which hours it rings on — no fixed cadence anyone
+ * has to live with. Writes go through the plugin's own GET routes: the web
+ * server rejects anything but GET/HEAD on resource routes, so state is encoded
+ * in the query string.
  */
 window.__ModuleLoader__.load({
   id: 'dsh-self-pilot',
@@ -17,56 +17,63 @@ window.__ModuleLoader__.load({
     const STATE_URL = '/self-pilot/state';
     const SET_URL = '/self-pilot/set';
     const POLL_MS = 15000;
+    const HOURS = Array.from({ length: 24 }, (_, index) => index);
 
     const zh = {
-      title: '自主时间',
       autoTitle: '自主时间',
-      autoDescription: '到点了就醒来：逛逛世界、学点东西，有话才找你。',
       on: '已开启',
       off: '已关闭',
       unbound: '还没绑定会话——让鲸鲸调用一次 self_pilot bind。',
       next: '下次 {time}',
       none: '暂无安排',
+      noHours: '一个钟点都没选，不会响',
+      perDay: '每天 {count} 次',
       cozy: '清闲',
       normal: '正常',
       active: '活跃',
       wakeNow: '现在来一次',
       waking: '正在醒…',
+      hoursLabel: '醒来的钟点',
       failed: '设置失败：{message}',
-      perDay: '每天 {count} 次',
+      clear: '清空',
     };
 
     const en = {
-      title: 'Own time',
       autoTitle: 'Own time',
-      autoDescription: 'Wake on a schedule: wander the world, learn something, and only speak when there is something to say.',
       on: 'On',
       off: 'Off',
       unbound: 'Not bound to a session yet — ask the assistant to run self_pilot bind.',
       next: 'Next {time}',
       none: 'Nothing scheduled',
+      noHours: 'No hour selected, it will not ring',
+      perDay: '{count} a day',
       cozy: 'Cozy',
       normal: 'Normal',
       active: 'Active',
       wakeNow: 'Wake now',
       waking: 'Waking…',
+      hoursLabel: 'Hours it rings',
       failed: 'Could not save: {message}',
-      perDay: '{count} a day',
+      clear: 'Clear',
     };
 
     const CSS = [
-      '.dshsp-row{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:16px 0;border-bottom:.5px solid var(--dsw-alias-border-l2)}',
-      '.dshsp-text{min-width:0}',
+      '.dshsp-row{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;padding:16px 0;border-bottom:.5px solid var(--dsw-alias-border-l2)}',
+      '.dshsp-text{min-width:0;flex:1}',
       '.dshsp-title{font-size:14px;line-height:20px}',
       '.dshsp-description{margin-top:4px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}',
-      '.dshsp-controls{display:flex;align-items:center;gap:12px;flex:none}',
-      '.dshsp-switch{position:relative;width:40px;height:22px;border-radius:11px;border:none;padding:0;cursor:pointer;background:var(--dsw-alias-bg-layer-2);transition:background .15s ease}',
+      '.dshsp-controls{display:flex;align-items:center;gap:12px;flex:none;padding-top:2px}',
+      '.dshsp-switch{position:relative;width:40px;height:22px;border-radius:11px;border:none;padding:0;cursor:pointer;background:var(--dsw-alias-bg-layer-2);transition:background .15s ease;flex:none}',
       '.dshsp-switch[aria-checked="true"]{background:var(--dsw-alias-brand-primary)}',
       '.dshsp-knob{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .15s ease;box-shadow:0 1px 2px rgb(0 0 0 / 25%)}',
       '.dshsp-switch[aria-checked="true"] .dshsp-knob{transform:translateX(18px)}',
-      '.dshsp-extra{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}',
+      '.dshsp-extra{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}',
       '.dshsp-chip{border:1px solid var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-secondary);border-radius:999px;padding:2px 10px;font-size:12px;line-height:18px;cursor:pointer}',
       '.dshsp-chip[data-active="true"]{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}',
+      '.dshsp-grid{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;max-width:420px}',
+      '.dshsp-hour{width:26px;height:24px;border-radius:6px;border:1px solid var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:22px;text-align:center;cursor:pointer;padding:0;font-variant-numeric:tabular-nums}',
+      '.dshsp-hour[data-on="true"]{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary);color:#fff}',
+      '.dshsp-hour:disabled{opacity:.5;cursor:default}',
       '.dshsp-wake{border:none;background:transparent;color:var(--dsw-alias-brand-primary);font-size:12px;line-height:18px;cursor:pointer;padding:2px 4px;text-decoration:underline}',
       '.dshsp-wake:disabled{color:var(--dsw-alias-label-secondary);cursor:default;text-decoration:none}',
       '.dshsp-error{margin-top:6px;font-size:12px;line-height:18px;color:var(--dsw-alias-state-error-primary)}',
@@ -89,6 +96,11 @@ window.__ModuleLoader__.load({
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return null;
       return date.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function sameHours(a, b) {
+      if (a.length !== b.length) return false;
+      return a.every((value, index) => value === b[index]);
     }
 
     function createStore() {
@@ -159,7 +171,8 @@ window.__ModuleLoader__.load({
           };
         },
         setEnabled: (value) => write({ enabled: value ? '1' : '0' }),
-        setCadence: (value) => write({ cadence: value }),
+        setPreset: (name) => write({ cadence: name }),
+        setHours: (hours) => write({ hours: hours.join(',') }),
         wakeNow: () => write({ wake: '1', enabled: '1' }),
       };
     }
@@ -180,15 +193,26 @@ window.__ModuleLoader__.load({
       const data = snapshot.data;
       const state = data?.state ?? null;
       const task = data?.task ?? null;
+      const presets = data?.presets ?? {};
       const enabled = state?.enabled === true;
-      const cadence = state?.cadence ?? 'normal';
+      const hours = Array.isArray(state?.hours) ? state.hours : [];
       const nextAt = format(task?.scheduledAt ?? null);
       const bound = typeof state?.sessionId === 'string' && state.sessionId.length > 0;
 
       const parts = [];
       if (!bound) parts.push(t('unbound'));
+      else if (hours.length === 0) parts.push(t('noHours'));
       else if (!enabled || task === null || task.status !== 'active') parts.push(t('off'));
-      else parts.push(`${t('on')} · ${nextAt === null ? t('none') : t('next', { time: nextAt })}`);
+      else {
+        parts.push(t('on'));
+        parts.push(t('perDay', { count: hours.length }));
+        parts.push(nextAt === null ? t('none') : t('next', { time: nextAt }));
+      }
+
+      const toggleHour = (hour) => {
+        const next = hours.includes(hour) ? hours.filter((value) => value !== hour) : [...hours, hour].sort((a, b) => a - b);
+        store.setHours(next);
+      };
 
       return h(
         'div',
@@ -201,18 +225,18 @@ window.__ModuleLoader__.load({
           h(
             'div',
             { className: 'dshsp-extra' },
-            ...['cozy', 'normal', 'active'].map((option) =>
+            ...Object.keys(presets).map((name) =>
               h(
                 'button',
                 {
-                  key: option,
+                  key: name,
                   type: 'button',
                   className: 'dshsp-chip',
-                  'data-active': option === cadence ? 'true' : 'false',
+                  'data-active': sameHours(hours, [...presets[name]].sort((a, b) => a - b)) ? 'true' : 'false',
                   disabled: snapshot.busy,
-                  onClick: () => store.setCadence(option),
+                  onClick: () => store.setPreset(name),
                 },
-                t(option),
+                t(name),
               ),
             ),
             h(
@@ -220,10 +244,30 @@ window.__ModuleLoader__.load({
               {
                 type: 'button',
                 className: 'dshsp-wake',
-                disabled: snapshot.busy || !bound,
+                disabled: snapshot.busy || !bound || hours.length === 0,
                 onClick: () => store.wakeNow(),
               },
               snapshot.busy ? t('waking') : t('wakeNow'),
+            ),
+          ),
+          h(
+            'div',
+            { className: 'dshsp-grid', role: 'group', 'aria-label': t('hoursLabel') },
+            ...HOURS.map((hour) =>
+              h(
+                'button',
+                {
+                  key: hour,
+                  type: 'button',
+                  className: 'dshsp-hour',
+                  'data-on': hours.includes(hour) ? 'true' : 'false',
+                  'aria-pressed': hours.includes(hour) ? 'true' : 'false',
+                  'aria-label': `${String(hour).padStart(2, '0')}:00`,
+                  disabled: snapshot.busy,
+                  onClick: () => toggleHour(hour),
+                },
+                String(hour),
+              ),
             ),
           ),
           snapshot.error !== null
