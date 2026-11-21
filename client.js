@@ -21,7 +21,6 @@ window.__ModuleLoader__.load({
     const SET_URL = '/self-pilot/set';
     const SESSIONS_URL = '/self-pilot/sessions';
     const POLL_MS = 15000;
-    const HOURS = Array.from({ length: 24 }, (_, index) => index);
 
     // Slot props may arrive without the inject face (a keyed `main` entry can be
     // rendered bare), so keep the bound face here as a fallback.
@@ -36,12 +35,9 @@ window.__ModuleLoader__.load({
       unbound: '还没选会话——在下面挑一个，我就在那里醒。',
       next: '下次 {time}',
       none: '暂无安排',
-      noHours: '一个钟点都没选，不会响',
-      noHoursShort: '没设钟点',
-      editHours: '改这个会话的钟点',
-      perDay: '每天 {count} 次',
-      hoursTitle: '醒来的钟点',
-      hoursHint: '点一下点亮或取消。改完立刻生效，闹钟跟着重排，不会丢历史。',
+      noPlan: '一个时段都没设，不会响',
+      noPlanShort: '没设时间',
+      editPlan: '改这个会话的时间表',
       sessionsTitle: '在哪些会话里醒',
       sessionsHint: '勾上哪个，就在哪个会话里自己开口。可以多选；取消勾选就撤掉那里的闹钟。',
       live: '在线',
@@ -53,6 +49,28 @@ window.__ModuleLoader__.load({
       normal: '正常',
       active: '活跃',
       clear: '清空',
+      modeAll: '全星期一样',
+      modeDays: '按星期分开',
+      day0: '日',
+      day1: '一',
+      day2: '二',
+      day3: '三',
+      day4: '四',
+      day5: '五',
+      day6: '六',
+      dayHint: '点一个星期几，改那一天的安排。',
+      copyToAll: '复制到每一天',
+      fromLabel: '从',
+      toLabel: '到',
+      everyLabel: '每隔',
+      everyUnit: '分',
+      addWindow: '加一段',
+      removeWindow: '删掉这段',
+      windowsTitle: '时间段',
+      windowsHint: '一天里可以放好几段；每段从开始到结束，每隔几分钟醒一次。结束早于开始就是跨夜。',
+      windowsCount: '{count} 段',
+      timesPerDay: '每天 {count} 次',
+      daysCount: '{count} 天有安排',
       wakeNow: '现在来一次',
       waking: '正在醒…',
       switchLabel: '自动醒来',
@@ -72,12 +90,9 @@ window.__ModuleLoader__.load({
       unbound: 'No session picked yet — choose one below and that is where I wake up.',
       next: 'Next {time}',
       none: 'Nothing scheduled',
-      noHours: 'No hour selected, it will not ring',
-      noHoursShort: 'no hours',
-      editHours: 'Edit this session\'s hours',
-      perDay: '{count} a day',
-      hoursTitle: 'Hours I wake up',
-      hoursHint: 'Click to turn an hour on or off. Changes apply immediately; the schedule is re-planned, history is kept.',
+      noPlan: 'No time window selected, it will not ring',
+      noPlanShort: 'no schedule',
+      editPlan: 'Edit this session\'s schedule',
       sessionsTitle: 'Which sessions I wake in',
       sessionsHint: 'Tick a session and I speak up there. Several are fine; unticking removes that alarm.',
       live: 'Live',
@@ -89,6 +104,28 @@ window.__ModuleLoader__.load({
       normal: 'Normal',
       active: 'Active',
       clear: 'Clear',
+      modeAll: 'Every day the same',
+      modeDays: 'Per weekday',
+      day0: 'Su',
+      day1: 'Mo',
+      day2: 'Tu',
+      day3: 'We',
+      day4: 'Th',
+      day5: 'Fr',
+      day6: 'Sa',
+      dayHint: 'Pick a weekday to edit that day.',
+      copyToAll: 'Copy to every day',
+      fromLabel: 'from',
+      toLabel: 'to',
+      everyLabel: 'every',
+      everyUnit: 'min',
+      addWindow: 'Add a window',
+      removeWindow: 'Remove this window',
+      windowsTitle: 'Time windows',
+      windowsHint: 'A day can hold several windows; each rings from its start to its end every N minutes. An end before the start wraps past midnight.',
+      windowsCount: '{count} windows',
+      timesPerDay: '{count} a day',
+      daysCount: '{count} days set',
       wakeNow: 'Wake now',
       waking: 'Waking…',
       switchLabel: 'Wake up automatically',
@@ -97,7 +134,7 @@ window.__ModuleLoader__.load({
       placeSettings: 'Settings',
       failed: 'Could not save: {message}',
       loading: 'Loading…',
-      footer: 'This page is only the controller. Close the browser and the alarm is still there — at the hour it rings I speak up in the sessions you picked.',
+      footer: 'This page is only the controller. Close the browser and the alarm is still there — when it rings I speak up in the sessions you picked.',
     };
 
     const CSS = [
@@ -157,6 +194,20 @@ window.__ModuleLoader__.load({
       '.dshsp-open[data-open="true"]{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}',
       '.dshsp-editor{display:flex;flex-direction:column;gap:10px;margin:2px 0 10px;padding:12px 12px 10px;border-radius:10px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1)}',
       '.dshsp-editor .dshsp-actions{flex-wrap:wrap}',
+      '.dshsp-days{display:flex;gap:4px;flex-wrap:wrap}',
+      '.dshsp-day{width:30px;height:28px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:26px;text-align:center;cursor:pointer;padding:0}',
+      '.dshsp-day[data-active="true"]{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-layer-1)}',
+      '.dshsp-day[data-set="true"]{font-weight:600;color:var(--dsw-alias-label-primary)}',
+      '.dshsp-windows{display:flex;flex-direction:column;gap:6px}',
+      '.dshsp-window{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}',
+      '.dshsp-time{border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:12px;line-height:18px;padding:3px 6px;font-variant-numeric:tabular-nums}',
+      '.dshsp-time:focus{outline:none;border-color:var(--dsw-alias-brand-primary)}',
+      '.dshsp-every{border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:12px;line-height:18px;padding:3px 4px}',
+      '.dshsp-del{border:none;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;font-size:14px;line-height:18px;padding:2px 6px;border-radius:6px;margin-left:auto}',
+      '.dshsp-del:hover{color:var(--dsw-alias-state-error-primary);background:var(--dsw-alias-bg-layer-1)}',
+      '.dshsp-add{border:1px dashed var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);border-radius:8px;padding:4px 10px;font-size:12px;line-height:18px;cursor:pointer;align-self:flex-start}',
+      '.dshsp-add:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}',
+      '.dshsp-empty{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}',
     ].join('\n');
 
     function ensureStyle() {
@@ -178,12 +229,78 @@ window.__ModuleLoader__.load({
       return date.toLocaleString(undefined, { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     }
 
-    function sameHours(a, b) {
-      if (a.length !== b.length) return false;
-      return a.every((value, index) => value === b[index]);
+    const DAYS = [0, 1, 2, 3, 4, 5, 6];
+    const DEFAULT_WINDOW = { start: '09:00', end: '10:00', every: 60 };
+    const EVERY_CHOICES = [5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240];
+    const dataPresets = {
+      cozy: [{ start: '10:00', end: '11:00', every: 60 }, { start: '15:00', end: '16:00', every: 60 }, { start: '20:00', end: '21:00', every: 60 }],
+      normal: [{ start: '09:00', end: '10:00', every: 60 }, { start: '12:00', end: '13:00', every: 60 }, { start: '15:00', end: '16:00', every: 60 }, { start: '18:00', end: '19:00', every: 60 }, { start: '21:00', end: '22:00', every: 60 }],
+      active: [{ start: '09:00', end: '23:00', every: 60 }],
+    };
+
+    function windowsOf(plan, day) {
+      if (!plan) return [];
+      if (plan.mode !== 'days') return Array.isArray(plan.all?.windows) ? plan.all.windows : [];
+      const windows = plan.days?.[String(day)]?.windows;
+      return Array.isArray(windows) ? windows : [];
     }
 
-    const dataPresets = { cozy: [10, 15, 20], normal: [9, 12, 15, 18, 21], active: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22] };
+    function withWindows(plan, day, windows) {
+      if (!plan) return plan;
+      if (plan.mode !== 'days') {
+        const days = {};
+        for (const index of DAYS) days[String(index)] = { windows };
+        return { ...plan, all: { windows }, days };
+      }
+      return { ...plan, days: { ...plan.days, [String(day)]: { windows } } };
+    }
+
+    /** Every minute-of-day a day plan rings at — mirrors the host's expansion. */
+    function dayTimes(windows) {
+      const times = new Set();
+      for (const window of Array.isArray(windows) ? windows : []) {
+        const [sh, sm] = String(window.start ?? '').split(':').map(Number);
+        const [eh, em] = String(window.end ?? '').split(':').map(Number);
+        if (!Number.isFinite(sh) || !Number.isFinite(eh)) continue;
+        const from = sh * 60 + (sm || 0);
+        let to = eh * 60 + (em || 0);
+        if (to <= from) to += 1440;
+        const every = Math.max(1, Number(window.every) || 60);
+        for (let at = from; at < to; at += every) times.add(at % 1440);
+      }
+      return [...times].sort((a, b) => a - b);
+    }
+
+    function planCount(plan) {
+      if (!plan) return 0;
+      if (plan.mode !== 'days') return dayTimes(plan.all?.windows).length;
+      let best = 0;
+      for (const day of DAYS) best = Math.max(best, dayTimes(windowsOf(plan, day)).length);
+      return best;
+    }
+
+    function planSummary(plan, t) {
+      if (!plan) return t('noPlanShort');
+      if (plan.mode === 'days') {
+        const set = DAYS.filter((day) => windowsOf(plan, day).length > 0).length;
+        return set === 0 ? t('noPlanShort') : t('daysCount', { count: set });
+      }
+      const windows = windowsOf(plan, 0);
+      if (windows.length === 0) return t('noPlanShort');
+      return `${t('windowsCount', { count: windows.length })} · ${t('timesPerDay', { count: dayTimes(windows).length })}`;
+    }
+
+    function addMinutes(clock, minutes) {
+      const [hh, mm] = String(clock ?? '09:00').split(':').map(Number);
+      const total = Math.min(1440, (Number(hh) || 0) * 60 + (Number(mm) || 0) + minutes);
+      if (total >= 1440) return '24:00';
+      return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+    }
+
+    /** <input type="time"> cannot show 24:00, so the day's end shows as 23:59. */
+    function endInput(clock) {
+      return clock === '24:00' ? '23:59' : clock;
+    }
 
     function createStore() {
       let snapshot = { status: 'loading', data: null, sessions: [], busy: false, error: null };
@@ -223,13 +340,13 @@ window.__ModuleLoader__.load({
         }
       };
 
-      // Each session's grid fires one click per cell; without a settle window
-      // every click would hit /self-pilot/set and re-plan that alarm once, so
-      // each notification costs a round. Hours are applied locally at once and
-      // the server is written only after the clicking stops — and the timer is
-      // kept per session, so editing two grids never mixes them up.
-      const HOURS_DEBOUNCE_MS = 900;
-      const hoursTimers = new Map();
+      // Editing a window fires on every keystroke and pick; without a settle
+      // window each one would hit /self-pilot/set and re-plan that alarm, and
+      // each re-plan costs a schedule notification. The plan is applied locally
+      // at once and written only after the editing stops — the timer is kept
+      // per session, so editing two sessions never mixes them up.
+      const PLAN_DEBOUNCE_MS = 900;
+      const planTimers = new Map();
 
       const write = async (params) => {
         set({ busy: true, error: null });
@@ -242,7 +359,7 @@ window.__ModuleLoader__.load({
           const targets = Array.isArray(data?.state?.targets) ? data.state.targets : [];
           const sessions = snapshot.sessions.map((entry) => {
             const target = targets.find((item) => item.id === entry.id);
-            return { ...entry, selected: target !== undefined, hours: target?.hours ?? null };
+            return { ...entry, selected: target !== undefined, plan: target?.plan ?? null };
           });
           set({ status: 'ready', data, sessions, busy: false, error: data.error ?? null });
         } catch (error) {
@@ -259,23 +376,25 @@ window.__ModuleLoader__.load({
         set({
           sessions: snapshot.sessions.map((entry) => {
             const target = targets.find((item) => item.id === entry.id);
-            return { ...entry, selected: target !== undefined, hours: target?.hours ?? null };
+            return { ...entry, selected: target !== undefined, plan: target?.plan ?? null };
           }),
         });
       };
 
-      const applyTargetHours = (id, hours) => {
-        applyTargets(targetsOf().map((target) => (target.id === id ? { ...target, hours } : target)));
+      const planOf = (id) => targetsOf().find((target) => target.id === id)?.plan ?? null;
+
+      const applyTargetPlan = (id, plan) => {
+        applyTargets(targetsOf().map((target) => (target.id === id ? { ...target, plan } : target)));
       };
 
-      const flushHours = async () => {
+      const flushPlans = async () => {
         const writes = [];
-        for (const [id, timer] of hoursTimers) {
+        for (const [id, timer] of planTimers) {
           window.clearTimeout(timer);
-          const hours = targetsOf().find((target) => target.id === id)?.hours ?? [];
-          writes.push(write({ hours: `${id}:${hours.join(',')}` }));
+          const plan = planOf(id);
+          if (plan !== null) writes.push(write({ plan: `${id}:${JSON.stringify(plan)}` }));
         }
-        hoursTimers.clear();
+        planTimers.clear();
         await Promise.all(writes);
       };
 
@@ -304,43 +423,45 @@ window.__ModuleLoader__.load({
             document.removeEventListener('visibilitychange', onVisibility);
           };
         },
-        hasPendingHours: () => hoursTimers.size > 0,
-        pendingHoursFor: (id) => hoursTimers.has(id),
+        hasPendingPlan: () => planTimers.size > 0,
+        pendingPlanFor: (id) => planTimers.has(id),
         setEnabled: (value) => write({ enabled: value ? '1' : '0' }),
-        // Optimistic per-session grid: repaint at once, coalesce per session.
-        setHoursFor: (id, hours, options = {}) => {
-          applyTargetHours(id, hours);
-          const timer = hoursTimers.get(id);
+        // Optimistic per-session plan: repaint at once, coalesce per session.
+        setPlanFor: (id, plan, options = {}) => {
+          applyTargetPlan(id, plan);
+          const timer = planTimers.get(id);
           if (timer !== undefined) window.clearTimeout(timer);
-          hoursTimers.delete(id);
+          planTimers.delete(id);
           if (options.defer) {
-            hoursTimers.set(
+            planTimers.set(
               id,
               window.setTimeout(() => {
-                hoursTimers.delete(id);
-                void write({ hours: `${id}:${hours.join(',')}` });
-              }, HOURS_DEBOUNCE_MS),
+                planTimers.delete(id);
+                const current = planOf(id);
+                if (current !== null) void write({ plan: `${id}:${JSON.stringify(current)}` });
+              }, PLAN_DEBOUNCE_MS),
             );
             return;
           }
-          void write({ hours: `${id}:${hours.join(',')}` });
+          void write({ plan: `${id}:${JSON.stringify(plan)}` });
         },
-        setPresetFor: (id, name) => {
-          const hours = [...(dataPresets[name] ?? [])].sort((a, b) => a - b);
-          applyTargetHours(id, hours);
-          void write({ hours: `${id}:${hours.join(',')}` });
+        setPresetFor: (id, name, day) => {
+          const plan = planOf(id);
+          const windows = (dataPresets[name] ?? []).map((window) => ({ ...window }));
+          if (plan === null) return;
+          setPlanFor(id, withWindows(plan, day, windows));
         },
         setPlace: (place) => write({ place }),
         // Tick a session: repaint the box at once, then let the host re-plan.
         toggleSession: (id) => {
           const targets = targetsOf();
           const has = targets.some((target) => target.id === id);
-          const fallback = Array.isArray(snapshot.data?.state?.hours) ? snapshot.data.state.hours : [];
-          applyTargets(has ? targets.filter((target) => target.id !== id) : [...targets, { id, hours: [...fallback] }]);
+          const fallback = snapshot.data?.state?.plan ?? null;
+          applyTargets(has ? targets.filter((target) => target.id !== id) : [...targets, { id, plan: fallback }]);
           void write({ toggle: id });
         },
         wakeNow: async () => {
-          if (hoursTimers.size > 0) await flushHours();
+          if (planTimers.size > 0) await flushPlans();
           void write({ wake: '1', enabled: '1' });
         },
       };
@@ -364,6 +485,200 @@ window.__ModuleLoader__.load({
       );
     }
 
+    function everyOptions(value) {
+      const every = Number(value);
+      if (!Number.isFinite(every) || EVERY_CHOICES.includes(every)) return [...EVERY_CHOICES];
+      return [...EVERY_CHOICES, every].sort((a, b) => a - b);
+    }
+
+    function signatureOf(windows) {
+      return (Array.isArray(windows) ? windows : []).map((window) => `${window.start}-${window.end}-${window.every}`).join('|');
+    }
+
+    /**
+     * The schedule editor: one plan for every weekday, or one per weekday; a
+     * plan is any number of windows, each with its own interval. Every edit is
+     * repainted locally at once and written back once the editing settles.
+     */
+    function PlanEditor(props) {
+      const { id, plan, day, onDay, store, t, running } = props;
+      const mode = plan?.mode === 'days' ? 'days' : 'all';
+      const windows = windowsOf(plan, day);
+      const currentSignature = signatureOf(windows);
+
+      const replace = (list) => store.setPlanFor(id, withWindows(plan, day, list), { defer: true });
+      const patch = (index, value) =>
+        replace(windows.map((window, at) => (at === index ? { ...window, ...value } : window)));
+      const add = () => {
+        const last = windows[windows.length - 1];
+        const start = last ? endInput(last.end) : DEFAULT_WINDOW.start;
+        replace([...windows, { start, end: addMinutes(start, 60), every: last?.every ?? DEFAULT_WINDOW.every }]);
+      };
+      const remove = (index) => replace(windows.filter((_, at) => at !== index));
+      const setMode = (next) => {
+        if (next === mode) return;
+        if (next === 'all') {
+          store.setPlanFor(id, withWindows({ ...plan, mode: 'all' }, day, windows));
+          return;
+        }
+        store.setPlanFor(id, { ...plan, mode: 'days' });
+      };
+      const copyToAll = () => {
+        const days = {};
+        for (const index of DAYS) days[String(index)] = { windows };
+        store.setPlanFor(id, { ...plan, mode: 'days', days });
+      };
+
+      return h(
+        'div',
+        { className: 'dshsp-editor' },
+        h(
+          'div',
+          { className: 'dshsp-actions', role: 'group', 'aria-label': t('windowsTitle') },
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dshsp-chip',
+              'data-active': mode === 'all' ? 'true' : 'false',
+              disabled: running,
+              onClick: () => setMode('all'),
+            },
+            t('modeAll'),
+          ),
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dshsp-chip',
+              'data-active': mode === 'days' ? 'true' : 'false',
+              disabled: running,
+              onClick: () => setMode('days'),
+            },
+            t('modeDays'),
+          ),
+          mode === 'days'
+            ? h(
+                'button',
+                { type: 'button', className: 'dshsp-link', disabled: running, onClick: copyToAll },
+                t('copyToAll'),
+              )
+            : null,
+        ),
+        mode === 'days'
+          ? h(
+              'div',
+              { className: 'dshsp-days', role: 'group', 'aria-label': t('dayHint') },
+              ...DAYS.map((index) =>
+                h(
+                  'button',
+                  {
+                    key: index,
+                    type: 'button',
+                    className: 'dshsp-day',
+                    'data-active': day === index ? 'true' : 'false',
+                    'data-set': windowsOf(plan, index).length > 0 ? 'true' : 'false',
+                    'aria-pressed': day === index ? 'true' : 'false',
+                    title: t(`day${index}`),
+                    disabled: running,
+                    onClick: () => onDay(index),
+                  },
+                  t(`day${index}`),
+                ),
+              ),
+            )
+          : null,
+        mode === 'days' ? h('div', { className: 'dshsp-hint' }, t('dayHint')) : null,
+        windows.length === 0
+          ? h('div', { className: 'dshsp-empty' }, t('noPlan'))
+          : h(
+              'div',
+              { className: 'dshsp-windows' },
+              ...windows.map((window, index) =>
+                h(
+                  'div',
+                  { key: index, className: 'dshsp-window' },
+                  h('span', null, t('fromLabel')),
+                  h('input', {
+                    type: 'time',
+                    className: 'dshsp-time',
+                    value: endInput(window.start),
+                    disabled: running,
+                    'aria-label': t('fromLabel'),
+                    onChange: (event) => patch(index, { start: event.target.value }),
+                  }),
+                  h('span', null, t('toLabel')),
+                  h('input', {
+                    type: 'time',
+                    className: 'dshsp-time',
+                    value: endInput(window.end),
+                    disabled: running,
+                    'aria-label': t('toLabel'),
+                    onChange: (event) => patch(index, { end: event.target.value }),
+                  }),
+                  h('span', null, t('everyLabel')),
+                  h(
+                    'select',
+                    {
+                      className: 'dshsp-every',
+                      value: String(window.every),
+                      disabled: running,
+                      'aria-label': t('everyLabel'),
+                      onChange: (event) => patch(index, { every: Number(event.target.value) }),
+                    },
+                    ...everyOptions(window.every).map((value) =>
+                      h('option', { key: value, value: String(value) }, String(value)),
+                    ),
+                  ),
+                  h('span', null, t('everyUnit')),
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dshsp-del',
+                      title: t('removeWindow'),
+                      'aria-label': t('removeWindow'),
+                      disabled: running,
+                      onClick: () => remove(index),
+                    },
+                    '×',
+                  ),
+                ),
+              ),
+            ),
+        h('button', { type: 'button', className: 'dshsp-add', disabled: running, onClick: add }, `+ ${t('addWindow')}`),
+        h(
+          'div',
+          { className: 'dshsp-actions' },
+          ...Object.keys(dataPresets).map((name) =>
+            h(
+              'button',
+              {
+                key: name,
+                type: 'button',
+                className: 'dshsp-chip',
+                'data-active': signatureOf(dataPresets[name]) === currentSignature ? 'true' : 'false',
+                disabled: running,
+                onClick: () => store.setPresetFor(id, name, day),
+              },
+              t(name),
+            ),
+          ),
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dshsp-link',
+              disabled: running || windows.length === 0,
+              onClick: () => replace([]),
+            },
+            t('clear'),
+          ),
+        ),
+        h('div', { className: 'dshsp-hint' }, t('windowsHint')),
+      );
+    }
+
     function Page(props) {
       const store = props.store ?? activeStore;
       const t = props.t ?? activeT;
@@ -372,30 +687,30 @@ window.__ModuleLoader__.load({
       const data = snapshot.data;
       const state = data?.state ?? null;
       const task = data?.task ?? null;
-      const presets = data?.presets ?? {};
       const enabled = state?.enabled === true;
       const targets = Array.isArray(state?.targets) ? state.targets : [];
-      const armed = targets.filter((target) => Array.isArray(target.hours) && target.hours.length > 0);
-      const totalHours = armed.reduce((count, target) => count + target.hours.length, 0);
+      const armed = targets.filter((target) => planCount(target.plan) > 0);
+      const perDay = armed.reduce((count, target) => count + planCount(target.plan), 0);
       const nextAt = formatWhen(task?.scheduledAt ?? null);
       const bound = targets.length > 0;
       const [expanded, setExpanded] = React.useState(null);
+      const [focusDay, setFocusDay] = React.useState(1);
       const sessions = Array.isArray(snapshot.sessions) ? snapshot.sessions : [];
       const activeTasks = Array.isArray(data?.tasks) ? data.tasks.filter((entry) => entry.status === 'active') : [];
       const place = state?.place === 'settings' ? 'settings' : 'sidebar';
-      // A pending debounced hour write must not disable the grid (the next
-      // click just reschedules the same coalesced write); other controls keep
+      // A pending debounced plan write must not disable the editor (the next
+      // edit just reschedules the same coalesced write); other controls keep
       // respecting busy.
-      const quietWrite = store.hasPendingHours();
+      const quietWrite = store.hasPendingPlan();
       const running = snapshot.busy && !quietWrite;
 
       let headline;
       if (snapshot.status === 'loading') headline = t('loading');
       else if (!bound) headline = t('unbound');
-      else if (armed.length === 0) headline = t('noHours');
+      else if (armed.length === 0) headline = t('noPlan');
       else if (!enabled || activeTasks.length === 0) headline = t('off');
       else {
-        const parts = [t('on'), t('perDay', { count: totalHours })];
+        const parts = [t('on'), t('timesPerDay', { count: perDay })];
         parts.push(nextAt === null ? t('none') : t('next', { time: nextAt }));
         headline = parts.join(' · ');
       }
@@ -488,7 +803,6 @@ window.__ModuleLoader__.load({
                   ...sessions.map((entry) => {
                     const on = entry.selected === true;
                     const mine = targets.find((target) => target.id === entry.id) ?? null;
-                    const mineHours = on && Array.isArray(mine?.hours) ? mine.hours : [];
                     const open = on && expanded === entry.id;
                     const when = formatWhen(new Date(entry.updatedAt ?? 0).toISOString());
                     const meta = [
@@ -498,19 +812,7 @@ window.__ModuleLoader__.load({
                     ]
                       .filter(Boolean)
                       .join(' · ');
-                    const summary =
-                      mineHours.length === 0
-                        ? t('noHoursShort')
-                        : mineHours.length <= 4
-                          ? mineHours.map((hour) => `${String(hour).padStart(2, '0')}:00`).join(' ')
-                          : t('perDay', { count: mineHours.length });
-                    const gridHours = mineHours;
-                    const toggleHour = (hour) => {
-                      const next = gridHours.includes(hour)
-                        ? gridHours.filter((value) => value !== hour)
-                        : [...gridHours, hour].sort((a, b) => a - b);
-                      store.setHoursFor(entry.id, next, { defer: true });
-                    };
+                    const summary = planSummary(mine?.plan ?? null, t);
                     return h(
                       React.Fragment,
                       { key: entry.id },
@@ -546,7 +848,7 @@ window.__ModuleLoader__.load({
                                 'data-open': open ? 'true' : 'false',
                                 'aria-expanded': open ? 'true' : 'false',
                                 disabled: running,
-                                title: t('editHours'),
+                                title: t('editPlan'),
                                 onClick: () => setExpanded(open ? null : entry.id),
                               },
                               summary,
@@ -554,59 +856,15 @@ window.__ModuleLoader__.load({
                           : null,
                       ),
                       open
-                        ? h(
-                            'div',
-                            { className: 'dshsp-editor' },
-                            h(
-                              'div',
-                              { className: 'dshsp-actions' },
-                              ...Object.keys(presets).map((name) =>
-                                h(
-                                  'button',
-                                  {
-                                    key: name,
-                                    type: 'button',
-                                    className: 'dshsp-chip',
-                                    'data-active': sameHours(gridHours, [...presets[name]].sort((a, b) => a - b)) ? 'true' : 'false',
-                                    disabled: running,
-                                    onClick: () => store.setPresetFor(entry.id, name),
-                                  },
-                                  t(name),
-                                ),
-                              ),
-                              h(
-                                'button',
-                                {
-                                  type: 'button',
-                                  className: 'dshsp-link',
-                                  disabled: running || gridHours.length === 0,
-                                  onClick: () => store.setHoursFor(entry.id, [], { defer: true }),
-                                },
-                                t('clear'),
-                              ),
-                            ),
-                            h(
-                              'div',
-                              { className: 'dshsp-grid', role: 'group', 'aria-label': t('hoursTitle') },
-                              ...HOURS.map((hour) =>
-                                h(
-                                  'button',
-                                  {
-                                    key: hour,
-                                    type: 'button',
-                                    className: 'dshsp-hour',
-                                    'data-on': gridHours.includes(hour) ? 'true' : 'false',
-                                    'aria-pressed': gridHours.includes(hour) ? 'true' : 'false',
-                                    'aria-label': `${String(hour).padStart(2, '0')}:00`,
-                                    disabled: running,
-                                    onClick: () => toggleHour(hour),
-                                  },
-                                  String(hour).padStart(2, '0'),
-                                ),
-                              ),
-                            ),
-                            h('div', { className: 'dshsp-hint' }, t('hoursHint')),
-                          )
+                        ? h(PlanEditor, {
+                            id: entry.id,
+                            plan: mine?.plan ?? state?.plan ?? null,
+                            day: focusDay,
+                            onDay: setFocusDay,
+                            store,
+                            t,
+                            running,
+                          })
                         : null,
                     );
                   }),
