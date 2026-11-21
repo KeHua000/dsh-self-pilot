@@ -1,0 +1,50 @@
+{
+  "name": "dsh-self-pilot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Own time for the assistant: a self-managed wake-up schedule, an agenda on disk, and a switch the owner can flip.",
+  "license": "MIT",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "autonomy",
+    "self-schedule",
+    "proactive"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KeHua000/dsh-self-pilot.git"
+  },
+  "homepage": "https://github.com/KeHua000/dsh-self-pilot#readme",
+  "bugs": {
+    "url": "https://github.com/KeHua000/dsh-self-pilot/issues"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  }
+}
