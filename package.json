@@ -1,6 +1,6 @@
 {
   "name": "dsh-self-pilot",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "description": "Own time for the assistant: a self-managed wake-up schedule, an agenda on disk, and a switch the owner can flip.",

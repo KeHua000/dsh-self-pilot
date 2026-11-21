@@ -36,9 +36,18 @@ const SESSION_LIMIT = 24;
 // A preset is just a day plan: a couple of one-hour windows, so picking one
 // still leaves the owner free to stretch or split it afterwards.
 const PRESETS = {
-  cozy: { windows: [{ start: '10:00', end: '11:00', every: 60 }, { start: '15:00', end: '16:00', every: 60 }, { start: '20:00', end: '21:00', every: 60 }] },
-  normal: { windows: [{ start: '09:00', end: '10:00', every: 60 }, { start: '12:00', end: '13:00', every: 60 }, { start: '15:00', end: '16:00', every: 60 }, { start: '18:00', end: '19:00', every: 60 }, { start: '21:00', end: '22:00', every: 60 }] },
-  active: { windows: [{ start: '09:00', end: '23:00', every: 60 }] },
+  cozy: {
+    times: ['10:00', '15:00', '20:00'],
+    windows: [{ start: '10:00', end: '11:00', every: 60 }, { start: '15:00', end: '16:00', every: 60 }, { start: '20:00', end: '21:00', every: 60 }],
+  },
+  normal: {
+    times: ['09:00', '12:00', '15:00', '18:00', '21:00'],
+    windows: [{ start: '09:00', end: '10:00', every: 60 }, { start: '12:00', end: '13:00', every: 60 }, { start: '15:00', end: '16:00', every: 60 }, { start: '18:00', end: '19:00', every: 60 }, { start: '21:00', end: '22:00', every: 60 }],
+  },
+  active: {
+    times: ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00', '22:00'],
+    windows: [{ start: '09:00', end: '23:00', every: 60 }],
+  },
 };
 
 const DEFAULT_PROMPT = [
@@ -74,6 +83,7 @@ const DEFAULTS = {
 const DAY_CODES = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
 const DAY_NAMES = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 const EVERY_LIMIT = 720;
+const MAX_PER_WINDOW = 96;
 
 function home() {
   return process.env.DSH_HOME ?? join(homedir(), '.dsh');
@@ -129,18 +139,57 @@ function normalizeEvery(value) {
  * A window is 'from this clock to that clock, every N minutes'. An end that is
  * not later than the start wraps past midnight, so 22:00-02:00 works.
  */
+function normalizeCount(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const count = Number(value);
+  if (!Number.isFinite(count) || count <= 0) return null;
+  return Math.min(MAX_PER_WINDOW, Math.max(1, Math.round(count)));
+}
+
 function normalizeWindow(value) {
   const start = clockMinutes(value?.start);
   const end = clockMinutes(value?.end);
   if (start === null || end === null || start === end) return null;
   if (start === 1440) return null;
+  // `repeat: false` rings once at the start instead of walking the interval;
+  // `max`/`min` cap or top up how many times a window fires.
+  const repeat = value?.repeat !== false;
+  let max = normalizeCount(value?.max);
+  const min = normalizeCount(value?.min);
+  if (max !== null && min !== null && max < min) max = min;
   return {
-    start: clockOf(start),
+    start: start === 0 ? '00:00' : clockOf(start),
     end: end === 1440 ? '24:00' : clockOf(end),
     every: normalizeEvery(value?.every),
+    repeat,
+    max,
+    min: min === null ? null : Math.min(min, MAX_PER_WINDOW),
   };
 }
 
+/** 'HH:MM' for a single moment of the day. */
+function normalizeTime(value) {
+  const minutes = clockMinutes(value);
+  if (minutes === null || minutes >= 1440) return null;
+  return clockOf(minutes);
+}
+
+function normalizeTimes(value) {
+  const list = Array.isArray(value) ? value : [];
+  const times = [];
+  for (const item of list) {
+    const time = normalizeTime(item);
+    if (time !== null && !times.includes(time)) times.push(time);
+  }
+  times.sort((a, b) => clockMinutes(a) - clockMinutes(b));
+  return times;
+}
+
+/**
+ * A day plan keeps both shapes — a list of moments (`times`) and a list of
+ * windows (`windows`) — and `kind` says which one is in force, so switching
+ * between the two modes never throws the other one away.
+ */
 function normalizeDayPlan(value) {
   const windows = [];
   const seen = new Set();
@@ -148,47 +197,34 @@ function normalizeDayPlan(value) {
   for (const item of source) {
     const window = normalizeWindow(item);
     if (window === null) continue;
-    const signature = `${window.start}-${window.end}-${window.every}`;
+    const signature = `${window.start}-${window.end}-${window.every}-${window.repeat ? 'r' : 'o'}-${window.max ?? ''}-${window.min ?? ''}`;
     if (seen.has(signature)) continue;
     seen.add(signature);
     windows.push(window);
   }
   windows.sort((a, b) => a.start.localeCompare(b.start));
-  return { windows };
+  return {
+    kind: value?.kind === 'times' ? 'times' : 'windows',
+    times: normalizeTimes(value?.times),
+    windows,
+  };
 }
 
 function daySignature(dayPlan) {
-  return dayPlan.windows.map((window) => `${window.start}-${window.end}-${window.every}`).join('|');
+  if (dayPlan.kind === 'times') return `t:${dayPlan.times.join(',')}`;
+  return dayPlan.windows
+    .map((window) => `${window.start}-${window.end}-${window.every}-${window.repeat ? 'r' : 'o'}-${window.max ?? ''}-${window.min ?? ''}`)
+    .join('|');
 }
 
-/** Hours [9,10,11,15] fold into the windows 09:00-12:00 and 15:00-16:00. */
+/** The old `hours: [9, 13]` lists come back as the "pick moments" mode. */
 function hoursToDayPlan(hours) {
-  const windows = [];
   const sorted = [...new Set(hours)].sort((a, b) => a - b);
-  let start = null;
-  let previous = null;
-  for (const hour of sorted) {
-    if (start === null) {
-      start = hour;
-      previous = hour;
-      continue;
-    }
-    if (hour === previous + 1) {
-      previous = hour;
-      continue;
-    }
-    windows.push({ start: `${pad(start)}:00`, end: previous === 23 ? '24:00' : `${pad(previous + 1)}:00`, every: 60 });
-    start = hour;
-    previous = hour;
-  }
-  if (start !== null) {
-    windows.push({ start: `${pad(start)}:00`, end: previous === 23 ? '24:00' : `${pad(previous + 1)}:00`, every: 60 });
-  }
-  return { windows };
+  return { kind: 'times', times: sorted.map((hour) => `${pad(hour)}:00`), windows: [] };
 }
 
 function emptyPlan() {
-  return { mode: 'all', all: { windows: [] }, days: {} };
+  return { mode: 'all', all: { kind: 'windows', times: [], windows: [] }, days: {} };
 }
 
 /**
@@ -349,15 +385,53 @@ function sameRule(a, b) {
   return ruleLine(a) === ruleLine(b);
 }
 
-/** Every minute-of-day a window actually rings at. */
+/** Every minute-of-day one window actually rings at, limits applied. */
+function windowTimes(window) {
+  const from = clockMinutes(window.start);
+  const to = clockMinutes(window.end);
+  if (from === null || to === null) return [];
+  const end = to <= from ? to + 1440 : to;
+  let points = [];
+  if (window.repeat !== false) {
+    const every = Math.max(1, Number(window.every) || 60);
+    for (let at = from; at < end; at += every) points.push(at);
+  } else {
+    points.push(from);
+  }
+  const max = Number.isInteger(window.max) ? window.max : null;
+  const min = Number.isInteger(window.min) ? window.min : null;
+  // Too many: keep `max` of them, spread evenly over the same window instead of
+  // just truncating the tail, so the last hour is not left empty.
+  if (max !== null && points.length > max) {
+    const step = points.length / max;
+    const kept = [];
+    for (let index = 0; index < max; index += 1) kept.push(points[Math.floor(index * step)]);
+    points = [...new Set(kept)];
+  }
+  // Too few: spread `min` points over the window and merge them in.
+  if (min !== null && points.length < min) {
+    const span = end - from;
+    const top = new Set(points);
+    for (let index = 0; index < min; index += 1) {
+      top.add(from + Math.floor((span * index) / Math.max(1, min)));
+    }
+    points = [...top].sort((a, b) => a - b);
+  }
+  return points.filter((at) => at < end).map((at) => at % 1440);
+}
+
+/** Every minute-of-day a day plan rings at. */
 function planTimes(dayPlan) {
   const times = new Set();
+  if (dayPlan.kind === 'times') {
+    for (const time of dayPlan.times) {
+      const at = clockMinutes(time);
+      if (at !== null && at < 1440) times.add(at);
+    }
+    return [...times].sort((a, b) => a - b);
+  }
   for (const window of dayPlan.windows) {
-    const from = clockMinutes(window.start);
-    const to = clockMinutes(window.end);
-    if (from === null || to === null) continue;
-    const end = to <= from ? to + 1440 : to;
-    for (let at = from; at < end; at += window.every) times.add(at % 1440);
+    for (const at of windowTimes(window)) times.add(at);
   }
   return [...times].sort((a, b) => a - b);
 }
@@ -394,7 +468,7 @@ function weekdayGroups(plan) {
   const bySignature = new Map();
   for (let day = 0; day < 7; day += 1) {
     const dayPlan = normalizeDayPlan(plan.days[String(day)] ?? plan.all);
-    if (dayPlan.windows.length === 0) continue;
+    if (planTimes(dayPlan).length === 0) continue;
     const signature = daySignature(dayPlan);
     const group = bySignature.get(signature) ?? { dayPlan, days: [] };
     group.days.push(day);
@@ -942,22 +1016,35 @@ export function apply(ctx) {
           hours: {
             type: 'array',
             items: { type: 'integer', minimum: 0, maximum: 23 },
-            description: 'hours 动作要设的整点列表，如 [9, 13, 21]（会折成 09:00-10:00、13:00-14:00…每 60 分钟）；配合 session 只改那一个会话，不给 session 就是「以后新加会话的默认时间表」。',
+            description: 'hours 动作要设的整点列表，如 [9, 13, 21]（等于 times: ["09:00","13:00","21:00"]）；配合 session 只改那一个会话，不给 session 就是「以后新加会话的默认时间表」。',
           },
           mode: {
             type: 'string',
             enum: ['all', 'days'],
             description: 'plan 动作：all = 全星期一样（用 windows）；days = 按星期分开（用 days）。',
           },
+          times: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'plan 动作的「按时刻」写法：直接给几个时刻，如 ["09:00", "13:30", "21:00"]，不涉及区间和间隔。和 windows 互不影响，kind 决定当前用哪个。',
+          },
+          kind: {
+            type: 'string',
+            enum: ['times', 'windows'],
+            description: 'plan 动作用哪种写法：times = 只挑时刻（配 times）；windows = 时段 + 间隔（配 windows）。不传时以传了哪个为准。',
+          },
           windows: {
             type: 'array',
-            description: 'plan 动作的时间段，每项 {start:"09:00", end:"12:00", every:30}，每段从 start 到 end 每隔 every 分钟醒一次；end 早于 start 表示跨夜。',
+            description: 'plan 动作的时间段，每项 {start:"09:00", end:"12:00", every:30, repeat:true, max:6, min:2}：从 start 到 end 每隔 every 分钟醒一次；repeat:false 只醒一次；max/min 限制这一段里最多/最少醒几次；end 早于 start 表示跨夜。',
             items: {
               type: 'object',
               properties: {
                 start: { type: 'string' },
                 end: { type: 'string' },
                 every: { type: 'integer', minimum: 1, maximum: 720 },
+                repeat: { type: 'boolean' },
+                max: { type: 'integer', minimum: 1, maximum: 96 },
+                min: { type: 'integer', minimum: 1, maximum: 96 },
               },
               required: ['start', 'end'],
               additionalProperties: false,
@@ -1032,14 +1119,23 @@ export function apply(ctx) {
             const every = Number.isFinite(Number(args.every)) ? Number(args.every) : 60;
             const toWindows = (list) =>
               (Array.isArray(list) ? list : []).map((item) => ({ ...item, every: item?.every ?? every }));
+            // `times` and `windows` are independent shapes; `kind` (or whichever
+            // one was passed at all) says which of them is in force.
+            const toTimes = (list) => (Array.isArray(list) ? list.filter((item) => typeof item === 'string') : []);
+            const dayOf = (source) => {
+              const windows = toWindows(source?.windows ?? source ?? args.windows);
+              const times = toTimes(source?.times ?? args.times);
+              const kind = source?.kind === 'times' || args.kind === 'times' || (args.kind === undefined && args.times !== undefined && args.windows === undefined) ? 'times' : 'windows';
+              return { kind, times, windows };
+            };
             const draft = {
               mode: args.mode === 'days' ? 'days' : 'all',
-              all: { windows: toWindows(args.windows) },
+              all: dayOf(null),
               days: {},
             };
             for (let day = 0; day < 7; day += 1) {
               const source = Array.isArray(args.days) ? args.days[day] : args.days?.[day] ?? args.days?.[String(day)];
-              draft.days[String(day)] = { windows: toWindows(source ?? args.windows) };
+              draft.days[String(day)] = dayOf(source ?? null);
             }
             const plan = normalizePlan(draft, before.plan);
             if (id.length === 0) return run({ plan });

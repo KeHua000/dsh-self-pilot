@@ -51,6 +51,14 @@ window.__ModuleLoader__.load({
       clear: '清空',
       modeAll: '全星期一样',
       modeDays: '按星期分开',
+      kindTimes: '按时刻',
+      kindWindows: '按时段',
+      kindHint: '按时刻 = 只挑几个时间点；按时段 = 从一个时间到另一个时间，中间按间隔醒来。',
+      timesTitle: '醒来的时刻',
+      timesHint: '点时间可以改，× 删掉；加一个就多一个时刻。',
+      addTime: '加一个时刻',
+      removeTime: '删掉这个时刻',
+      noTimes: '还没有挑时刻。',
       day0: '日',
       day1: '一',
       day2: '二',
@@ -66,6 +74,13 @@ window.__ModuleLoader__.load({
       everyUnit: '分',
       addWindow: '加一段',
       removeWindow: '删掉这段',
+      repeatOn: '按间隔',
+      repeatOff: '只醒一次',
+      repeatHint: '关掉就只在这段的开始时间醒一次。',
+      maxLabel: '最多',
+      minLabel: '最少',
+      timesUnit: '次',
+      unlimitedPlaceholder: '不限',
       windowsTitle: '时间段',
       windowsHint: '一天里可以放好几段；每段从开始到结束，每隔几分钟醒一次。结束早于开始就是跨夜。',
       windowsCount: '{count} 段',
@@ -106,6 +121,14 @@ window.__ModuleLoader__.load({
       clear: 'Clear',
       modeAll: 'Every day the same',
       modeDays: 'Per weekday',
+      kindTimes: 'Pick times',
+      kindWindows: 'Time windows',
+      kindHint: 'Pick times = a few moments of the day. Time windows = a span with an interval inside it.',
+      timesTitle: 'Wake-up moments',
+      timesHint: 'Tap a time to change it, × to drop it, add one for another moment.',
+      addTime: 'Add a moment',
+      removeTime: 'Remove this moment',
+      noTimes: 'No moments picked yet.',
       day0: 'Su',
       day1: 'Mo',
       day2: 'Tu',
@@ -121,6 +144,13 @@ window.__ModuleLoader__.load({
       everyUnit: 'min',
       addWindow: 'Add a window',
       removeWindow: 'Remove this window',
+      repeatOn: 'On interval',
+      repeatOff: 'Once only',
+      repeatHint: 'Turn it off to ring once, at the start of this window.',
+      maxLabel: 'max',
+      minLabel: 'min',
+      timesUnit: 'times',
+      unlimitedPlaceholder: 'any',
       windowsTitle: 'Time windows',
       windowsHint: 'A day can hold several windows; each rings from its start to its end every N minutes. An end before the start wraps past midnight.',
       windowsCount: '{count} windows',
@@ -198,7 +228,10 @@ window.__ModuleLoader__.load({
       '.dshsp-day{width:30px;height:28px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:26px;text-align:center;cursor:pointer;padding:0}',
       '.dshsp-day[data-active="true"]{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-layer-1)}',
       '.dshsp-day[data-set="true"]{font-weight:600;color:var(--dsw-alias-label-primary)}',
-      '.dshsp-windows{display:flex;flex-direction:column;gap:6px}',
+      '.dshsp-windows{display:flex;flex-direction:column;gap:8px}',
+      '.dshsp-window2{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary);padding-left:2px}',
+      '.dshsp-count{width:54px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:12px;line-height:18px;padding:3px 6px;text-align:center;font-variant-numeric:tabular-nums}',
+      '.dshsp-count:focus{outline:none;border-color:var(--dsw-alias-brand-primary)}',
       '.dshsp-window{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}',
       '.dshsp-time{border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:12px;line-height:18px;padding:3px 6px;font-variant-numeric:tabular-nums}',
       '.dshsp-time:focus{outline:none;border-color:var(--dsw-alias-brand-primary)}',
@@ -233,61 +266,116 @@ window.__ModuleLoader__.load({
     const DEFAULT_WINDOW = { start: '09:00', end: '10:00', every: 60 };
     const EVERY_CHOICES = [5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240];
     const dataPresets = {
-      cozy: [{ start: '10:00', end: '11:00', every: 60 }, { start: '15:00', end: '16:00', every: 60 }, { start: '20:00', end: '21:00', every: 60 }],
-      normal: [{ start: '09:00', end: '10:00', every: 60 }, { start: '12:00', end: '13:00', every: 60 }, { start: '15:00', end: '16:00', every: 60 }, { start: '18:00', end: '19:00', every: 60 }, { start: '21:00', end: '22:00', every: 60 }],
-      active: [{ start: '09:00', end: '23:00', every: 60 }],
+      cozy: {
+        times: ['10:00', '15:00', '20:00'],
+        windows: [{ start: '10:00', end: '11:00', every: 60 }, { start: '15:00', end: '16:00', every: 60 }, { start: '20:00', end: '21:00', every: 60 }],
+      },
+      normal: {
+        times: ['09:00', '12:00', '15:00', '18:00', '21:00'],
+        windows: [{ start: '09:00', end: '10:00', every: 60 }, { start: '12:00', end: '13:00', every: 60 }, { start: '15:00', end: '16:00', every: 60 }, { start: '18:00', end: '19:00', every: 60 }, { start: '21:00', end: '22:00', every: 60 }],
+      },
+      active: {
+        times: ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00', '22:00'],
+        windows: [{ start: '09:00', end: '23:00', every: 60 }],
+      },
     };
 
-    function windowsOf(plan, day) {
-      if (!plan) return [];
-      if (plan.mode !== 'days') return Array.isArray(plan.all?.windows) ? plan.all.windows : [];
-      const windows = plan.days?.[String(day)]?.windows;
-      return Array.isArray(windows) ? windows : [];
+    /** Both shapes are kept; `kind` says which one is in force. */
+    function dayPlanOf(plan, day) {
+      const source = !plan ? null : plan.mode !== 'days' ? plan.all : plan.days?.[String(day)] ?? plan.all;
+      return {
+        kind: source?.kind === 'times' ? 'times' : 'windows',
+        times: Array.isArray(source?.times) ? source.times : [],
+        windows: Array.isArray(source?.windows) ? source.windows : [],
+      };
     }
 
-    function withWindows(plan, day, windows) {
+    function windowsOf(plan, day) {
+      return dayPlanOf(plan, day).windows;
+    }
+
+    function timesOf(plan, day) {
+      return dayPlanOf(plan, day).times;
+    }
+
+    function dayCount(dayPlan) {
+      return dayPlan.kind === 'times' ? dayPlan.times.length : dayTimes(dayPlan.windows).length;
+    }
+
+    function withDayPlan(plan, day, next) {
       if (!plan) return plan;
+      const dayPlan = {
+        kind: next.kind === 'times' ? 'times' : 'windows',
+        times: Array.isArray(next.times) ? next.times : [],
+        windows: Array.isArray(next.windows) ? next.windows : [],
+      };
       if (plan.mode !== 'days') {
         const days = {};
-        for (const index of DAYS) days[String(index)] = { windows };
-        return { ...plan, all: { windows }, days };
+        for (const index of DAYS) days[String(index)] = dayPlan;
+        return { ...plan, all: dayPlan, days };
       }
-      return { ...plan, days: { ...plan.days, [String(day)]: { windows } } };
+      return { ...plan, days: { ...plan.days, [String(day)]: dayPlan } };
     }
 
-    /** Every minute-of-day a day plan rings at — mirrors the host's expansion. */
+    /** Every minute-of-day one window rings at — mirrors the host's expansion. */
+    function windowTimes(window) {
+      const [sh, sm] = String(window.start ?? '').split(':').map(Number);
+      const [eh, em] = String(window.end ?? '').split(':').map(Number);
+      if (!Number.isFinite(sh) || !Number.isFinite(eh)) return [];
+      const from = sh * 60 + (sm || 0);
+      let to = eh * 60 + (em || 0);
+      if (to <= from) to += 1440;
+      const span = to - from;
+      const every = Math.max(1, Number(window.every) || 60);
+      let points = [from];
+      if (window.repeat !== false) {
+        points = [];
+        for (let at = from; at < to; at += every) points.push(at);
+      }
+      const max = Number.isInteger(window.max) ? window.max : null;
+      const min = Number.isInteger(window.min) ? window.min : null;
+      if (max !== null && points.length > max) {
+        const step = points.length / max;
+        const kept = [];
+        for (let index = 0; index < max; index += 1) kept.push(points[Math.floor(index * step)]);
+        points = [...new Set(kept)];
+      }
+      if (min !== null && points.length < min) {
+        const top = new Set(points);
+        for (let index = 0; index < min; index += 1) top.add(from + Math.floor((span * index) / Math.max(1, min)));
+        points = [...top].sort((a, b) => a - b);
+      }
+      return points.filter((at) => at < to).map((at) => at % 1440);
+    }
+
+    /** Every minute-of-day a day plan rings at. */
     function dayTimes(windows) {
       const times = new Set();
       for (const window of Array.isArray(windows) ? windows : []) {
-        const [sh, sm] = String(window.start ?? '').split(':').map(Number);
-        const [eh, em] = String(window.end ?? '').split(':').map(Number);
-        if (!Number.isFinite(sh) || !Number.isFinite(eh)) continue;
-        const from = sh * 60 + (sm || 0);
-        let to = eh * 60 + (em || 0);
-        if (to <= from) to += 1440;
-        const every = Math.max(1, Number(window.every) || 60);
-        for (let at = from; at < to; at += every) times.add(at % 1440);
+        for (const at of windowTimes(window)) times.add(at);
       }
       return [...times].sort((a, b) => a - b);
     }
 
     function planCount(plan) {
       if (!plan) return 0;
-      if (plan.mode !== 'days') return dayTimes(plan.all?.windows).length;
+      if (plan.mode !== 'days') return dayCount(dayPlanOf(plan, 0));
       let best = 0;
-      for (const day of DAYS) best = Math.max(best, dayTimes(windowsOf(plan, day)).length);
+      for (const day of DAYS) best = Math.max(best, dayCount(dayPlanOf(plan, day)));
       return best;
     }
 
     function planSummary(plan, t) {
       if (!plan) return t('noPlanShort');
       if (plan.mode === 'days') {
-        const set = DAYS.filter((day) => windowsOf(plan, day).length > 0).length;
+        const set = DAYS.filter((day) => dayCount(dayPlanOf(plan, day)) > 0).length;
         return set === 0 ? t('noPlanShort') : t('daysCount', { count: set });
       }
-      const windows = windowsOf(plan, 0);
-      if (windows.length === 0) return t('noPlanShort');
-      return `${t('windowsCount', { count: windows.length })} · ${t('timesPerDay', { count: dayTimes(windows).length })}`;
+      const dayPlan = dayPlanOf(plan, 0);
+      const count = dayCount(dayPlan);
+      if (count === 0) return t('noPlanShort');
+      if (dayPlan.kind === 'times') return t('timesPerDay', { count });
+      return `${t('windowsCount', { count: dayPlan.windows.length })} · ${t('timesPerDay', { count })}`;
     }
 
     function addMinutes(clock, minutes) {
@@ -447,9 +535,14 @@ window.__ModuleLoader__.load({
         },
         setPresetFor: (id, name, day) => {
           const plan = planOf(id);
-          const windows = (dataPresets[name] ?? []).map((window) => ({ ...window }));
-          if (plan === null) return;
-          setPlanFor(id, withWindows(plan, day, windows));
+          const preset = dataPresets[name];
+          if (plan === null || !preset) return;
+          const current = dayPlanOf(plan, day);
+          setPlanFor(id, withDayPlan(plan, day, {
+            kind: current.kind,
+            times: preset.times.map((time) => time),
+            windows: preset.windows.map((window) => ({ ...window })),
+          }));
         },
         setPlace: (place) => write({ place }),
         // Tick a session: repaint the box at once, then let the host re-plan.
@@ -491,8 +584,9 @@ window.__ModuleLoader__.load({
       return [...EVERY_CHOICES, every].sort((a, b) => a - b);
     }
 
-    function signatureOf(windows) {
-      return (Array.isArray(windows) ? windows : []).map((window) => `${window.start}-${window.end}-${window.every}`).join('|');
+    function signatureOf(dayPlan) {
+      if (dayPlan?.kind === 'times') return `t:${(dayPlan.times ?? []).join(',')}`;
+      return (dayPlan?.windows ?? []).map((window) => `${window.start}-${window.end}-${window.every}`).join('|');
     }
 
     /**
@@ -503,29 +597,49 @@ window.__ModuleLoader__.load({
     function PlanEditor(props) {
       const { id, plan, day, onDay, store, t, running } = props;
       const mode = plan?.mode === 'days' ? 'days' : 'all';
-      const windows = windowsOf(plan, day);
-      const currentSignature = signatureOf(windows);
+      const dayPlan = dayPlanOf(plan, day);
+      const kind = dayPlan.kind;
+      const windows = dayPlan.windows;
+      const times = dayPlan.times;
+      const currentSignature = signatureOf(dayPlan);
 
-      const replace = (list) => store.setPlanFor(id, withWindows(plan, day, list), { defer: true });
+      const replace = (next, options) => store.setPlanFor(id, withDayPlan(plan, day, next), options);
       const patch = (index, value) =>
-        replace(windows.map((window, at) => (at === index ? { ...window, ...value } : window)));
+        replace({ ...dayPlan, windows: windows.map((window, at) => (at === index ? { ...window, ...value } : window)) }, { defer: true });
       const add = () => {
         const last = windows[windows.length - 1];
         const start = last ? endInput(last.end) : DEFAULT_WINDOW.start;
-        replace([...windows, { start, end: addMinutes(start, 60), every: last?.every ?? DEFAULT_WINDOW.every }]);
+        replace({
+          ...dayPlan,
+          windows: [...windows, { start, end: addMinutes(start, 60), every: last?.every ?? DEFAULT_WINDOW.every }],
+        }, { defer: true });
       };
-      const remove = (index) => replace(windows.filter((_, at) => at !== index));
+      const remove = (index) => replace({ ...dayPlan, windows: windows.filter((_, at) => at !== index) }, { defer: true });
+
+      // "Pick moments": a plain list of clock times, no interval involved.
+      const setTimes = (list) => replace({ ...dayPlan, times: list }, { defer: true });
+      const patchTime = (index, value) => setTimes(times.map((time, at) => (at === index ? value : time)));
+      const addTime = () => {
+        const last = times[times.length - 1];
+        setTimes([...times, last ? endInput(addMinutes(last, 60)) : '09:00']);
+      };
+      const removeTime = (index) => setTimes(times.filter((_, at) => at !== index));
+      const setKind = (next) => {
+        if (next === kind) return;
+        store.setPlanFor(id, withDayPlan(plan, day, { ...dayPlan, kind: next }));
+      };
+
       const setMode = (next) => {
         if (next === mode) return;
         if (next === 'all') {
-          store.setPlanFor(id, withWindows({ ...plan, mode: 'all' }, day, windows));
+          store.setPlanFor(id, withDayPlan({ ...plan, mode: 'all' }, day, dayPlan));
           return;
         }
         store.setPlanFor(id, { ...plan, mode: 'days' });
       };
       const copyToAll = () => {
         const days = {};
-        for (const index of DAYS) days[String(index)] = { windows };
+        for (const index of DAYS) days[String(index)] = dayPlan;
         store.setPlanFor(id, { ...plan, mode: 'days', days });
       };
 
@@ -558,11 +672,7 @@ window.__ModuleLoader__.load({
             t('modeDays'),
           ),
           mode === 'days'
-            ? h(
-                'button',
-                { type: 'button', className: 'dshsp-link', disabled: running, onClick: copyToAll },
-                t('copyToAll'),
-              )
+            ? h('button', { type: 'button', className: 'dshsp-link', disabled: running, onClick: copyToAll }, t('copyToAll'))
             : null,
         ),
         mode === 'days'
@@ -577,7 +687,7 @@ window.__ModuleLoader__.load({
                     type: 'button',
                     className: 'dshsp-day',
                     'data-active': day === index ? 'true' : 'false',
-                    'data-set': windowsOf(plan, index).length > 0 ? 'true' : 'false',
+                    'data-set': dayCount(dayPlanOf(plan, index)) > 0 ? 'true' : 'false',
                     'aria-pressed': day === index ? 'true' : 'false',
                     title: t(`day${index}`),
                     disabled: running,
@@ -589,64 +699,197 @@ window.__ModuleLoader__.load({
             )
           : null,
         mode === 'days' ? h('div', { className: 'dshsp-hint' }, t('dayHint')) : null,
-        windows.length === 0
-          ? h('div', { className: 'dshsp-empty' }, t('noPlan'))
-          : h(
-              'div',
-              { className: 'dshsp-windows' },
-              ...windows.map((window, index) =>
-                h(
-                  'div',
-                  { key: index, className: 'dshsp-window' },
-                  h('span', null, t('fromLabel')),
-                  h('input', {
-                    type: 'time',
-                    className: 'dshsp-time',
-                    value: endInput(window.start),
-                    disabled: running,
-                    'aria-label': t('fromLabel'),
-                    onChange: (event) => patch(index, { start: event.target.value }),
-                  }),
-                  h('span', null, t('toLabel')),
-                  h('input', {
-                    type: 'time',
-                    className: 'dshsp-time',
-                    value: endInput(window.end),
-                    disabled: running,
-                    'aria-label': t('toLabel'),
-                    onChange: (event) => patch(index, { end: event.target.value }),
-                  }),
-                  h('span', null, t('everyLabel')),
+        // Two ways of saying when to wake up: a handful of moments, or windows
+        // with an interval inside them. Both shapes live in the plan at once.
+        h(
+          'div',
+          { className: 'dshsp-actions', role: 'group', 'aria-label': t('kindHint') },
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dshsp-chip',
+              'data-active': kind === 'times' ? 'true' : 'false',
+              disabled: running,
+              onClick: () => setKind('times'),
+            },
+            t('kindTimes'),
+          ),
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dshsp-chip',
+              'data-active': kind === 'windows' ? 'true' : 'false',
+              disabled: running,
+              onClick: () => setKind('windows'),
+            },
+            t('kindWindows'),
+          ),
+        ),
+        kind === 'times'
+          ? times.length === 0
+            ? h('div', { className: 'dshsp-empty' }, t('noTimes'))
+            : h(
+                'div',
+                { className: 'dshsp-windows', role: 'group', 'aria-label': t('timesTitle') },
+                ...times.map((time, index) =>
                   h(
-                    'select',
-                    {
-                      className: 'dshsp-every',
-                      value: String(window.every),
+                    'div',
+                    { key: index, className: 'dshsp-window' },
+                    h('span', null, t('timesTitle')),
+                    h('input', {
+                      type: 'time',
+                      className: 'dshsp-time',
+                      value: endInput(time),
                       disabled: running,
-                      'aria-label': t('everyLabel'),
-                      onChange: (event) => patch(index, { every: Number(event.target.value) }),
-                    },
-                    ...everyOptions(window.every).map((value) =>
-                      h('option', { key: value, value: String(value) }, String(value)),
+                      'aria-label': t('timesTitle'),
+                      onChange: (event) => patchTime(index, event.target.value),
+                    }),
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dshsp-del',
+                        title: t('removeTime'),
+                        'aria-label': t('removeTime'),
+                        disabled: running,
+                        onClick: () => removeTime(index),
+                      },
+                      '×',
                     ),
                   ),
-                  h('span', null, t('everyUnit')),
-                  h(
-                    'button',
-                    {
-                      type: 'button',
-                      className: 'dshsp-del',
-                      title: t('removeWindow'),
-                      'aria-label': t('removeWindow'),
-                      disabled: running,
-                      onClick: () => remove(index),
-                    },
-                    '×',
-                  ),
                 ),
+              )
+          : windows.length === 0
+            ? h('div', { className: 'dshsp-empty' }, t('noPlan'))
+            : h(
+                'div',
+                { className: 'dshsp-windows' },
+                ...windows.map((window, index) => {
+                  const repeats = window.repeat !== false;
+                  const count = dayTimes([window]).length;
+                  return h(
+                    'div',
+                    { key: index, className: 'dshsp-chain' },
+                    h(
+                      'div',
+                      { className: 'dshsp-window' },
+                      h('span', null, t('fromLabel')),
+                      h('input', {
+                        type: 'time',
+                        className: 'dshsp-time',
+                        value: endInput(window.start),
+                        disabled: running,
+                        'aria-label': t('fromLabel'),
+                        onChange: (event) => patch(index, { start: event.target.value }),
+                      }),
+                      h('span', null, t('toLabel')),
+                      h('input', {
+                        type: 'time',
+                        className: 'dshsp-time',
+                        value: endInput(window.end),
+                        disabled: running,
+                        'aria-label': t('toLabel'),
+                        onChange: (event) => patch(index, { end: event.target.value }),
+                      }),
+                      // The interval itself can be switched off: the window then
+                      // rings once, at its start.
+                      h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dshsp-chip',
+                          'data-active': repeats ? 'true' : 'false',
+                          'aria-pressed': repeats ? 'true' : 'false',
+                          title: t('repeatHint'),
+                          disabled: running,
+                          onClick: () => patch(index, { repeat: !repeats }),
+                        },
+                        repeats ? t('repeatOn') : t('repeatOff'),
+                      ),
+                      repeats
+                        ? h(
+                            React.Fragment,
+                            { key: 'every' },
+                            h('span', null, t('everyLabel')),
+                            h(
+                              'select',
+                              {
+                                className: 'dshsp-every',
+                                value: String(window.every),
+                                disabled: running,
+                                'aria-label': t('everyLabel'),
+                                onChange: (event) => patch(index, { every: Number(event.target.value) }),
+                              },
+                              ...everyOptions(window.every).map((value) =>
+                                h('option', { key: value, value: String(value) }, String(value)),
+                              ),
+                            ),
+                            h('span', null, t('everyUnit')),
+                          )
+                        : null,
+                      h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dshsp-del',
+                          title: t('removeWindow'),
+                          'aria-label': t('removeWindow'),
+                          disabled: running,
+                          onClick: () => remove(index),
+                        },
+                        '×',
+                      ),
+                    ),
+                    // How many times this window may ring, at most and at least.
+                    h(
+                      'div',
+                      { className: 'dshsp-window2' },
+                      h('span', null, t('maxLabel')),
+                      h('input', {
+                        type: 'number',
+                        className: 'dshsp-count',
+                        min: 1,
+                        max: 96,
+                        value: window.max ?? '',
+                        placeholder: t('unlimitedPlaceholder'),
+                        disabled: running,
+                        'aria-label': t('maxLabel'),
+                        onChange: (event) =>
+                          patch(index, { max: event.target.value === '' ? null : Number(event.target.value) }),
+                      }),
+                      h('span', null, t('timesUnit')),
+                      h('span', null, '·'),
+                      h('span', null, t('minLabel')),
+                      h('input', {
+                        type: 'number',
+                        className: 'dshsp-count',
+                        min: 1,
+                        max: 96,
+                        value: window.min ?? '',
+                        placeholder: t('unlimitedPlaceholder'),
+                        disabled: running,
+                        'aria-label': t('minLabel'),
+                        onChange: (event) =>
+                          patch(index, { min: event.target.value === '' ? null : Number(event.target.value) }),
+                      }),
+                      h('span', null, t('timesUnit')),
+                      h('span', { className: 'dshsp-hint' }, `= ${count} ${t('timesUnit')}`),
+                    ),
+                  );
+                }),
               ),
-            ),
-        h('button', { type: 'button', className: 'dshsp-add', disabled: running, onClick: add }, `+ ${t('addWindow')}`),
+        h(
+          'button',
+          {
+            type: 'button',
+            className: 'dshsp-add',
+            disabled: running,
+            onClick: kind === 'times' ? addTime : add,
+          },
+          `+ ${kind === 'times' ? t('addTime') : t('addWindow')}`,
+        ),
         h(
           'div',
           { className: 'dshsp-actions' },
@@ -657,7 +900,10 @@ window.__ModuleLoader__.load({
                 key: name,
                 type: 'button',
                 className: 'dshsp-chip',
-                'data-active': signatureOf(dataPresets[name]) === currentSignature ? 'true' : 'false',
+                'data-active':
+                  signatureOf({ kind, times: dataPresets[name].times, windows: dataPresets[name].windows }) === currentSignature
+                    ? 'true'
+                    : 'false',
                 disabled: running,
                 onClick: () => store.setPresetFor(id, name, day),
               },
@@ -669,13 +915,13 @@ window.__ModuleLoader__.load({
             {
               type: 'button',
               className: 'dshsp-link',
-              disabled: running || windows.length === 0,
-              onClick: () => replace([]),
+              disabled: running || dayCount(dayPlan) === 0,
+              onClick: () => replace({ ...dayPlan, windows: [], times: [] }),
             },
             t('clear'),
           ),
         ),
-        h('div', { className: 'dshsp-hint' }, t('windowsHint')),
+        h('div', { className: 'dshsp-hint' }, kind === 'times' ? t('timesHint') : t('windowsHint')),
       );
     }
 
