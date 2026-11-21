@@ -66,8 +66,13 @@ window.__ModuleLoader__.load({
       day4: '四',
       day5: '五',
       day6: '六',
-      dayHint: '点一个星期几，改那一天的安排。',
+      dayHint: '可以一次选好几天，一起改。',
       copyToAll: '复制到每一天',
+      weekdays: '工作日',
+      weekend: '周末',
+      allDays: '全选',
+      pickDays: '先点几个星期几，再改它们的安排。',
+      editingDays: '正在改选中的 {count} 天',
       fromLabel: '从',
       toLabel: '到',
       everyLabel: '每隔',
@@ -136,8 +141,13 @@ window.__ModuleLoader__.load({
       day4: 'Th',
       day5: 'Fr',
       day6: 'Sa',
-      dayHint: 'Pick a weekday to edit that day.',
+      dayHint: 'Pick several days and edit them together.',
       copyToAll: 'Copy to every day',
+      weekdays: 'Weekdays',
+      weekend: 'Weekend',
+      allDays: 'All',
+      pickDays: 'Pick a few weekdays first, then edit them together.',
+      editingDays: 'Editing {count} selected days',
       fromLabel: 'from',
       toLabel: 'to',
       everyLabel: 'every',
@@ -595,15 +605,24 @@ window.__ModuleLoader__.load({
      * repainted locally at once and written back once the editing settles.
      */
     function PlanEditor(props) {
-      const { id, plan, day, onDay, store, t, running } = props;
+      const { id, plan, days, onDays, store, t, running } = props;
       const mode = plan?.mode === 'days' ? 'days' : 'all';
-      const dayPlan = dayPlanOf(plan, day);
+      // Several weekdays can be edited at once: one selection, one write.
+      const picked = (Array.isArray(days) ? days : []).filter((index) => DAYS.includes(index));
+      const editing = mode === 'days' ? picked : [0];
+      const dayPlan = dayPlanOf(plan, editing[0] ?? 1);
+      const locked = running || (mode === 'days' && picked.length === 0);
       const kind = dayPlan.kind;
       const windows = dayPlan.windows;
       const times = dayPlan.times;
       const currentSignature = signatureOf(dayPlan);
 
-      const replace = (next, options) => store.setPlanFor(id, withDayPlan(plan, day, next), options);
+      const replace = (next, options) => {
+        if (editing.length === 0) return;
+        let draft = plan;
+        for (const index of editing) draft = withDayPlan(draft, index, next);
+        store.setPlanFor(id, draft, options);
+      };
       const patch = (index, value) =>
         replace({ ...dayPlan, windows: windows.map((window, at) => (at === index ? { ...window, ...value } : window)) }, { defer: true });
       const add = () => {
@@ -626,13 +645,13 @@ window.__ModuleLoader__.load({
       const removeTime = (index) => setTimes(times.filter((_, at) => at !== index));
       const setKind = (next) => {
         if (next === kind) return;
-        store.setPlanFor(id, withDayPlan(plan, day, { ...dayPlan, kind: next }));
+        replace({ ...dayPlan, kind: next });
       };
 
       const setMode = (next) => {
         if (next === mode) return;
         if (next === 'all') {
-          store.setPlanFor(id, withDayPlan({ ...plan, mode: 'all' }, day, dayPlan));
+          store.setPlanFor(id, withDayPlan({ ...plan, mode: 'all' }, 1, dayPlan));
           return;
         }
         store.setPlanFor(id, { ...plan, mode: 'days' });
@@ -655,7 +674,7 @@ window.__ModuleLoader__.load({
               type: 'button',
               className: 'dshsp-chip',
               'data-active': mode === 'all' ? 'true' : 'false',
-              disabled: running,
+              disabled: locked,
               onClick: () => setMode('all'),
             },
             t('modeAll'),
@@ -666,13 +685,13 @@ window.__ModuleLoader__.load({
               type: 'button',
               className: 'dshsp-chip',
               'data-active': mode === 'days' ? 'true' : 'false',
-              disabled: running,
+              disabled: locked,
               onClick: () => setMode('days'),
             },
             t('modeDays'),
           ),
           mode === 'days'
-            ? h('button', { type: 'button', className: 'dshsp-link', disabled: running, onClick: copyToAll }, t('copyToAll'))
+            ? h('button', { type: 'button', className: 'dshsp-link', disabled: locked, onClick: copyToAll }, t('copyToAll'))
             : null,
         ),
         mode === 'days'
@@ -686,19 +705,37 @@ window.__ModuleLoader__.load({
                     key: index,
                     type: 'button',
                     className: 'dshsp-day',
-                    'data-active': day === index ? 'true' : 'false',
+                    'data-active': picked.includes(index) ? 'true' : 'false',
                     'data-set': dayCount(dayPlanOf(plan, index)) > 0 ? 'true' : 'false',
-                    'aria-pressed': day === index ? 'true' : 'false',
+                    'aria-pressed': picked.includes(index) ? 'true' : 'false',
                     title: t(`day${index}`),
-                    disabled: running,
-                    onClick: () => onDay(index),
+                    disabled: locked,
+                    onClick: () =>
+                      onDays(picked.includes(index) ? picked.filter((at) => at !== index) : [...picked, index].sort((a, b) => a - b)),
                   },
                   t(`day${index}`),
                 ),
               ),
+              h(
+                'button',
+                { type: 'button', className: 'dshsp-link', disabled: locked, onClick: () => onDays([1, 2, 3, 4, 5]) },
+                t('weekdays'),
+              ),
+              h(
+                'button',
+                { type: 'button', className: 'dshsp-link', disabled: locked, onClick: () => onDays([0, 6]) },
+                t('weekend'),
+              ),
+              h(
+                'button',
+                { type: 'button', className: 'dshsp-link', disabled: locked, onClick: () => onDays([...DAYS]) },
+                t('allDays'),
+              ),
             )
           : null,
-        mode === 'days' ? h('div', { className: 'dshsp-hint' }, t('dayHint')) : null,
+        mode === 'days'
+          ? h('div', { className: 'dshsp-hint' }, picked.length === 0 ? t('pickDays') : t('editingDays', { count: picked.length }))
+          : null,
         // Two ways of saying when to wake up: a handful of moments, or windows
         // with an interval inside them. Both shapes live in the plan at once.
         h(
@@ -710,7 +747,7 @@ window.__ModuleLoader__.load({
               type: 'button',
               className: 'dshsp-chip',
               'data-active': kind === 'times' ? 'true' : 'false',
-              disabled: running,
+              disabled: locked,
               onClick: () => setKind('times'),
             },
             t('kindTimes'),
@@ -721,7 +758,7 @@ window.__ModuleLoader__.load({
               type: 'button',
               className: 'dshsp-chip',
               'data-active': kind === 'windows' ? 'true' : 'false',
-              disabled: running,
+              disabled: locked,
               onClick: () => setKind('windows'),
             },
             t('kindWindows'),
@@ -742,7 +779,7 @@ window.__ModuleLoader__.load({
                       type: 'time',
                       className: 'dshsp-time',
                       value: endInput(time),
-                      disabled: running,
+                      disabled: locked,
                       'aria-label': t('timesTitle'),
                       onChange: (event) => patchTime(index, event.target.value),
                     }),
@@ -753,7 +790,7 @@ window.__ModuleLoader__.load({
                         className: 'dshsp-del',
                         title: t('removeTime'),
                         'aria-label': t('removeTime'),
-                        disabled: running,
+                        disabled: locked,
                         onClick: () => removeTime(index),
                       },
                       '×',
@@ -780,7 +817,7 @@ window.__ModuleLoader__.load({
                         type: 'time',
                         className: 'dshsp-time',
                         value: endInput(window.start),
-                        disabled: running,
+                        disabled: locked,
                         'aria-label': t('fromLabel'),
                         onChange: (event) => patch(index, { start: event.target.value }),
                       }),
@@ -789,7 +826,7 @@ window.__ModuleLoader__.load({
                         type: 'time',
                         className: 'dshsp-time',
                         value: endInput(window.end),
-                        disabled: running,
+                        disabled: locked,
                         'aria-label': t('toLabel'),
                         onChange: (event) => patch(index, { end: event.target.value }),
                       }),
@@ -803,7 +840,7 @@ window.__ModuleLoader__.load({
                           'data-active': repeats ? 'true' : 'false',
                           'aria-pressed': repeats ? 'true' : 'false',
                           title: t('repeatHint'),
-                          disabled: running,
+                          disabled: locked,
                           onClick: () => patch(index, { repeat: !repeats }),
                         },
                         repeats ? t('repeatOn') : t('repeatOff'),
@@ -818,7 +855,7 @@ window.__ModuleLoader__.load({
                               {
                                 className: 'dshsp-every',
                                 value: String(window.every),
-                                disabled: running,
+                                disabled: locked,
                                 'aria-label': t('everyLabel'),
                                 onChange: (event) => patch(index, { every: Number(event.target.value) }),
                               },
@@ -836,7 +873,7 @@ window.__ModuleLoader__.load({
                           className: 'dshsp-del',
                           title: t('removeWindow'),
                           'aria-label': t('removeWindow'),
-                          disabled: running,
+                          disabled: locked,
                           onClick: () => remove(index),
                         },
                         '×',
@@ -854,7 +891,7 @@ window.__ModuleLoader__.load({
                         max: 96,
                         value: window.max ?? '',
                         placeholder: t('unlimitedPlaceholder'),
-                        disabled: running,
+                        disabled: locked,
                         'aria-label': t('maxLabel'),
                         onChange: (event) =>
                           patch(index, { max: event.target.value === '' ? null : Number(event.target.value) }),
@@ -869,7 +906,7 @@ window.__ModuleLoader__.load({
                         max: 96,
                         value: window.min ?? '',
                         placeholder: t('unlimitedPlaceholder'),
-                        disabled: running,
+                        disabled: locked,
                         'aria-label': t('minLabel'),
                         onChange: (event) =>
                           patch(index, { min: event.target.value === '' ? null : Number(event.target.value) }),
@@ -885,7 +922,7 @@ window.__ModuleLoader__.load({
           {
             type: 'button',
             className: 'dshsp-add',
-            disabled: running,
+            disabled: locked,
             onClick: kind === 'times' ? addTime : add,
           },
           `+ ${kind === 'times' ? t('addTime') : t('addWindow')}`,
@@ -904,7 +941,7 @@ window.__ModuleLoader__.load({
                   signatureOf({ kind, times: dataPresets[name].times, windows: dataPresets[name].windows }) === currentSignature
                     ? 'true'
                     : 'false',
-                disabled: running,
+                disabled: locked,
                 onClick: () => store.setPresetFor(id, name, day),
               },
               t(name),
@@ -915,7 +952,7 @@ window.__ModuleLoader__.load({
             {
               type: 'button',
               className: 'dshsp-link',
-              disabled: running || dayCount(dayPlan) === 0,
+              disabled: locked || dayCount(dayPlan) === 0,
               onClick: () => replace({ ...dayPlan, windows: [], times: [] }),
             },
             t('clear'),
@@ -940,7 +977,7 @@ window.__ModuleLoader__.load({
       const nextAt = formatWhen(task?.scheduledAt ?? null);
       const bound = targets.length > 0;
       const [expanded, setExpanded] = React.useState(null);
-      const [focusDay, setFocusDay] = React.useState(1);
+      const [focusDays, setFocusDays] = React.useState([1, 2, 3, 4, 5]);
       const sessions = Array.isArray(snapshot.sessions) ? snapshot.sessions : [];
       const activeTasks = Array.isArray(data?.tasks) ? data.tasks.filter((entry) => entry.status === 'active') : [];
       const place = state?.place === 'settings' ? 'settings' : 'sidebar';
@@ -1105,8 +1142,8 @@ window.__ModuleLoader__.load({
                         ? h(PlanEditor, {
                             id: entry.id,
                             plan: mine?.plan ?? state?.plan ?? null,
-                            day: focusDay,
-                            onDay: setFocusDay,
+                            days: focusDays,
+                            onDays: setFocusDays,
                             store,
                             t,
                             running,
