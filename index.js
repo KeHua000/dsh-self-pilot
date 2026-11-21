@@ -59,6 +59,7 @@ const DEFAULT_AGENDA = [
 const DEFAULTS = {
   enabled: false,
   hours: [9, 12, 15, 18, 21],
+  place: 'sidebar',
   sessionId: null,
   boundAt: null,
   lastWakeAt: null,
@@ -111,6 +112,7 @@ function readState() {
     state.hours = preset.filter((hour) => hour >= quietEnd && hour < quietStart);
   }
   state.hours = normalizeHours(state.hours) ?? [...DEFAULTS.hours];
+  if (state.place !== 'sidebar' && state.place !== 'settings') state.place = DEFAULTS.place;
   delete state.cadence;
   delete state.quietStart;
   delete state.quietEnd;
@@ -291,6 +293,8 @@ export function apply(ctx) {
               const parsed = normalizeHours(hours.split(',').filter((part) => part.trim().length > 0).map(Number));
               mutate.hours = parsed ?? [];
             }
+            const place = url.searchParams.get('place');
+            if (place === 'sidebar' || place === 'settings') mutate.place = place;
             const session = url.searchParams.get('session');
             if (session !== null && session.trim().length > 0) {
               mutate.sessionId = session.trim();

@@ -1,11 +1,13 @@
 /**
  * Client half of dsh-self-pilot.
  *
- * Its own panel: a row in the sidebar's global panel list (clock icon) that
- * opens a full page in the main column — nothing is left inside Settings →
- * General. State is read from `/self-pilot/state` and written through
- * `/self-pilot/set`, both GET resources because the web server rejects anything
- * but GET/HEAD on resource routes.
+ * Where the controller lives is the owner's choice, stored with the rest of the
+ * state: a sidebar panel with its own page (`sidebar.panellist` + `main`), or a
+ * page of its own inside Settings (`settings.section`). Switch at any time on
+ * the page itself; the seats are re-registered in place, no reload needed.
+ *
+ * State is read from `/self-pilot/state` and written through `/self-pilot/set`
+ * — GET resources, because the web server rejects anything but GET/HEAD there.
  */
 window.__ModuleLoader__.load({
   id: 'dsh-self-pilot',
@@ -20,8 +22,8 @@ window.__ModuleLoader__.load({
     const POLL_MS = 15000;
     const HOURS = Array.from({ length: 24 }, (_, index) => index);
 
-    // Slot props are not guaranteed to carry the inject face (a keyed `main`
-    // entry may be rendered without one), so keep the last bound face here.
+    // Slot props may arrive without the inject face (a keyed `main` entry can be
+    // rendered bare), so keep the bound face here as a fallback.
     let activeStore = null;
     let activeT = null;
 
@@ -45,6 +47,9 @@ window.__ModuleLoader__.load({
       wakeNow: '现在来一次',
       waking: '正在醒…',
       switchLabel: '自动醒来',
+      placeLabel: '显示在',
+      placeSidebar: '侧栏',
+      placeSettings: '设置页',
       failed: '设置失败：{message}',
       loading: '读取中…',
       footer: '这一页只是控制器。就算关掉浏览器，闹钟也在，到点时我会在这个会话里自己开口。',
@@ -70,6 +75,9 @@ window.__ModuleLoader__.load({
       wakeNow: 'Wake now',
       waking: 'Waking…',
       switchLabel: 'Wake up automatically',
+      placeLabel: 'Show in',
+      placeSidebar: 'Sidebar',
+      placeSettings: 'Settings',
       failed: 'Could not save: {message}',
       loading: 'Loading…',
       footer: 'This page is only the controller. Close the browser and the alarm is still there — at the hour it rings I speak up in this session.',
@@ -77,33 +85,38 @@ window.__ModuleLoader__.load({
 
     const CSS = [
       '.dshsp-page{height:100%;min-height:0;overflow-y:auto;box-sizing:border-box;padding:28px 32px 40px}',
+      '.dshsp-page[data-seat="settings"]{padding:20px 0 32px}',
       '.dshsp-inner{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:16px}',
       '.dshsp-head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px}',
       '.dshsp-h1{margin:0;font-size:20px;line-height:28px;font-weight:600;color:var(--dsw-alias-label-primary)}',
       '.dshsp-sub{margin:6px 0 0;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary);max-width:60ch}',
+      '.dshsp-headRight{display:flex;align-items:center;gap:12px;flex:none}',
+      '.dshsp-seg{display:inline-flex;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:2px;gap:2px;background:var(--dsw-alias-bg-layer-1)}',
+      '.dshsp-segButton{border:none;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px;padding:3px 10px;border-radius:6px;cursor:pointer}',
+      '.dshsp-segButton[data-active="true"]{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}',
+      '.dshsp-segButton:hover{color:var(--dsw-alias-label-primary)}',
       '.dshsp-card{border:1px solid var(--dsw-alias-border-l1);border-radius:12px;padding:16px 18px;background:var(--dsw-alias-bg-layer-1);display:flex;flex-direction:column;gap:12px}',
       '.dshsp-cardHead{display:flex;align-items:center;justify-content:space-between;gap:16px}',
       '.dshsp-cardTitle{font-size:13px;line-height:20px;font-weight:600;color:var(--dsw-alias-label-primary)}',
       '.dshsp-stat{display:flex;align-items:center;gap:8px;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary);flex-wrap:wrap}',
-      '.dshsp-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:2px 10px;font-size:12px;line-height:18px;border:1px solid var(--dsw-alias-border-l1)}',
+      '.dshsp-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:2px 10px;font-size:12px;line-height:18px;border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary)}',
       '.dshsp-pill[data-on="true"]{border-color:var(--dsw-alias-state-success-primary);color:var(--dsw-alias-state-success-primary)}',
-      '.dshsp-dot{width:6px;height:6px;border-radius:50%;background:var(--dsw-alias-label-secondary)}',
-      '.dshsp-pill[data-on="true"] .dshsp-dot{background:var(--dsw-alias-state-success-primary)}',
-      '.dshsp-switch{position:relative;width:44px;height:24px;border-radius:12px;border:none;padding:0;cursor:pointer;background:var(--dsw-alias-bg-layer-2);transition:background .15s ease;flex:none}',
-      '.dshsp-switch[aria-checked="true"]{background:var(--dsw-alias-brand-primary)}',
+      '.dshsp-dot{width:6px;height:6px;border-radius:50%;background:currentColor}',
+      '.dshsp-switch{position:relative;width:44px;height:24px;border-radius:12px;padding:0;cursor:pointer;flex:none;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);transition:background .15s ease,border-color .15s ease}',
+      '.dshsp-switch[aria-checked="true"]{background:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary)}',
       '.dshsp-switch:disabled{opacity:.6;cursor:default}',
-      '.dshsp-knob{position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .15s ease;box-shadow:0 1px 2px rgb(0 0 0 / 25%)}',
+      '.dshsp-knob{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--dsw-alias-label-primary);transition:transform .15s ease;box-shadow:0 1px 2px rgb(0 0 0 / 30%)}',
       '.dshsp-switch[aria-checked="true"] .dshsp-knob{transform:translateX(20px)}',
       '.dshsp-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:6px}',
       '.dshsp-hour{height:34px;border-radius:8px;border:1px solid var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:32px;text-align:center;cursor:pointer;padding:0;font-variant-numeric:tabular-nums;transition:background .12s ease,color .12s ease,border-color .12s ease}',
       '.dshsp-hour:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}',
-      '.dshsp-hour[data-on="true"]{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary);color:#fff}',
+      '.dshsp-hour[data-on="true"]{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-bg-base);font-weight:600}',
       '.dshsp-hour:disabled{opacity:.5;cursor:default}',
       '.dshsp-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
-      '.dshsp-chip{border:1px solid var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-secondary);border-radius:999px;padding:3px 12px;font-size:12px;line-height:18px;cursor:pointer}',
+      '.dshsp-chip{border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);border-radius:999px;padding:3px 12px;font-size:12px;line-height:18px;cursor:pointer}',
       '.dshsp-chip:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}',
-      '.dshsp-chip[data-active="true"]{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}',
-      '.dshsp-primary{border:1px solid var(--dsw-alias-brand-primary);background:var(--dsw-alias-brand-primary);color:#fff;border-radius:8px;padding:6px 14px;font-size:13px;line-height:20px;cursor:pointer;margin-left:auto}',
+      '.dshsp-chip[data-active="true"]{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-layer-2)}',
+      '.dshsp-primary{border:1px solid var(--dsw-alias-brand-primary);background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-bg-base);border-radius:8px;padding:6px 14px;font-size:13px;line-height:20px;font-weight:600;cursor:pointer;margin-left:auto}',
       '.dshsp-primary:disabled{opacity:.55;cursor:default}',
       '.dshsp-link{border:none;background:transparent;color:var(--dsw-alias-brand-primary);font-size:12px;line-height:18px;cursor:pointer;padding:3px 6px;border-radius:6px}',
       '.dshsp-link:hover{background:var(--dsw-alias-bg-layer-2)}',
@@ -206,6 +219,7 @@ window.__ModuleLoader__.load({
         setEnabled: (value) => write({ enabled: value ? '1' : '0' }),
         setPreset: (name) => write({ cadence: name }),
         setHours: (hours) => write({ hours: hours.join(',') }),
+        setPlace: (place) => write({ place }),
         wakeNow: () => write({ wake: '1', enabled: '1' }),
       };
     }
@@ -231,6 +245,7 @@ window.__ModuleLoader__.load({
     function Page(props) {
       const store = props.store ?? activeStore;
       const t = props.t ?? activeT;
+      const inSettings = typeof props.close === 'function';
       const snapshot = useStore(store);
       const data = snapshot.data;
       const state = data?.state ?? null;
@@ -240,6 +255,7 @@ window.__ModuleLoader__.load({
       const hours = Array.isArray(state?.hours) ? state.hours : [];
       const nextAt = formatWhen(task?.scheduledAt ?? null);
       const bound = typeof state?.sessionId === 'string' && state.sessionId.length > 0;
+      const place = state?.place === 'settings' ? 'settings' : 'sidebar';
       const running = snapshot.busy;
 
       let headline;
@@ -258,9 +274,15 @@ window.__ModuleLoader__.load({
         store.setHours(next);
       };
 
+      const choosePlace = (next) => {
+        if (next === place) return;
+        store.setPlace(next);
+        if (next === 'sidebar' && inSettings) props.close();
+      };
+
       return h(
         'div',
-        { className: 'dshsp-page' },
+        { className: 'dshsp-page', 'data-seat': inSettings ? 'settings' : 'page' },
         h(
           'div',
           { className: 'dshsp-inner' },
@@ -274,17 +296,47 @@ window.__ModuleLoader__.load({
               h('p', { className: 'dshsp-sub' }, t('subtitle')),
             ),
             h(
-              'button',
-              {
-                type: 'button',
-                role: 'switch',
-                className: 'dshsp-switch',
-                'aria-checked': enabled ? 'true' : 'false',
-                'aria-label': t('switchLabel'),
-                disabled: running,
-                onClick: () => store.setEnabled(!enabled),
-              },
-              h('span', { className: 'dshsp-knob' }),
+              'div',
+              { className: 'dshsp-headRight' },
+              h(
+                'div',
+                { className: 'dshsp-seg', role: 'group', 'aria-label': t('placeLabel') },
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dshsp-segButton',
+                    'data-active': place === 'sidebar' ? 'true' : 'false',
+                    disabled: running,
+                    onClick: () => choosePlace('sidebar'),
+                  },
+                  t('placeSidebar'),
+                ),
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dshsp-segButton',
+                    'data-active': place === 'settings' ? 'true' : 'false',
+                    disabled: running,
+                    onClick: () => choosePlace('settings'),
+                  },
+                  t('placeSettings'),
+                ),
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  role: 'switch',
+                  className: 'dshsp-switch',
+                  'aria-checked': enabled ? 'true' : 'false',
+                  'aria-label': t('switchLabel'),
+                  disabled: running,
+                  onClick: () => store.setEnabled(!enabled),
+                },
+                h('span', { className: 'dshsp-knob' }),
+              ),
             ),
           ),
           h(
@@ -386,15 +438,45 @@ window.__ModuleLoader__.load({
         const face = () => ({ store, t });
         activeStore = store;
         activeT = t;
-        ctx.effect(() => () => {
-          if (activeStore === store) activeStore = null;
-          if (activeT === t) activeT = null;
-        }, 'self-pilot: face');
 
-        ctx.slots.inject('sidebar.panellist', () =>
-          ctx.slots.register({ name: 'sidebar.panellist', id: PANEL_ID, order: 12, label: () => t('title') }, PanelIcon),
-        );
-        ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, inject: face }, Page));
+        const seat = (slotName, options, component) =>
+          ctx.slots.inject(slotName, () => ctx.slots.register({ ...options, name: slotName, inject: face }, component));
+
+        let disposers = [];
+        let mounted = null;
+        const unmount = () => {
+          for (const dispose of disposers) {
+            try {
+              dispose();
+            } catch {
+              /* already gone */
+            }
+          }
+          disposers = [];
+        };
+        const mount = () => {
+          const place = store.getSnapshot().data?.state?.place === 'settings' ? 'settings' : 'sidebar';
+          if (place === mounted) return;
+          unmount();
+          mounted = place;
+          if (place === 'settings') {
+            disposers.push(seat('settings.section', { id: PANEL_ID, order: 44, label: () => t('title') }, Page));
+          } else {
+            disposers.push(seat('sidebar.panellist', { id: PANEL_ID, order: 12, label: () => t('title') }, PanelIcon));
+            disposers.push(seat('main', { key: PANEL_ID }, Page));
+          }
+        };
+
+        ctx.effect(() => {
+          mount();
+          const unsubscribe = store.subscribe(mount);
+          return () => {
+            unsubscribe();
+            unmount();
+            if (activeStore === store) activeStore = null;
+            if (activeT === t) activeT = null;
+          };
+        }, 'self-pilot: seats');
       },
     };
   },
